@@ -1,17 +1,36 @@
 {
-  "openapi": "3.0.3",
+  "openapi": "3.0.0",
   "info": {
-    "title": "Testing API - Movie App & Auth",
-    "version": "1.1.0",
-    "description": "Comprehensive API for testing RemoteDataSource, Model generator, and Movie features"
+    "title": "Corporate API Client",
+    "version": "1.0.0",
+    "description": "API Gateway for Authentication, User Management, and Product Catalog (JWT Secured)",
+    "contact": {
+      "email": "apisupport@perusahaan.com"
+    }
   },
+
   "servers": [
-    { "url": "https://api.example.com" }
+    {
+      "url": "https://api.perusahaan.com/v1",
+      "description": "Production Server"
+    },
+    {
+      "url": "http://localhost:8080/v1",
+      "description": "Development Server"
+    }
   ],
+
+  "security": [
+    { "BearerAuth": [] }
+  ],
+
   "paths": {
     "/auth/register": {
       "post": {
-        "summary": "Register a new user (raw JSON body)",
+        "tags": ["Auth"],
+        "summary": "Register user baru",
+        "operationId": "register",
+        "security": [],
         "requestBody": {
           "required": true,
           "content": {
@@ -22,358 +41,269 @@
         },
         "responses": {
           "201": {
-            "description": "User registered successfully",
+            "description": "Registrasi berhasil",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/RegisterResponse" }
+                "schema": { "$ref": "#/components/schemas/AuthResponse" }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestError"
           }
         }
       }
     },
+
     "/auth/login": {
       "post": {
-        "summary": "Login user using form-urlencoded",
+        "tags": ["Auth"],
+        "summary": "Login user",
+        "operationId": "login",
+        "security": [],
         "requestBody": {
           "required": true,
           "content": {
-            "application/x-www-form-urlencoded": {
+            "application/json": {
               "schema": { "$ref": "#/components/schemas/LoginRequest" }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Login success",
+            "description": "Login berhasil",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/LoginResponse" }
+                "schema": { "$ref": "#/components/schemas/AuthResponse" }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
           }
         }
       }
     },
-    "/upload/avatar": {
-      "post": {
-        "summary": "Upload user avatar (multipart/form-data)",
+
+    "/users": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Mengambil semua user",
+        "operationId": "getUsers",
         "parameters": [
           {
-            "name": "userId",
+            "name": "limit",
             "in": "query",
-            "required": true,
-            "schema": { "type": "integer" }
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "avatar": { "type": "string", "format": "binary" }
-                },
-                "required": ["avatar"]
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
-            "description": "Avatar uploaded successfully",
+            "description": "List user",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/UploadResponse" }
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/User" }
+                }
               }
             }
-          }
-        }
-      }
-    },
-    "/movies": {
-      "get": {
-        "summary": "Get list of movies",
-        "responses": {
-          "200": {
-            "description": "List of movies fetched successfully",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/MovieListResponse" }
-              }
-            }
+          },
+          "401": {
+            "$ref": "#/components/responses/UnauthorizedError"
           }
         }
       },
+
       "post": {
-        "summary": "Add new movie (multipart for poster upload)",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "title": { "type": "string" },
-                  "description": { "type": "string" },
-                  "genre": { "type": "string" },
-                  "poster": { "type": "string", "format": "binary" }
-                },
-                "required": ["title", "description", "genre", "poster"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Movie created successfully",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/MovieResponse" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/movies/{movieId}": {
-      "get": {
-        "summary": "Get movie details",
-        "parameters": [
-          {
-            "name": "movieId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Movie details fetched successfully",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/MovieDetailResponse" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/movies/{movieId}/comments": {
-      "post": {
-        "summary": "Post a comment using raw JSON",
-        "parameters": [
-          {
-            "name": "movieId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
+        "tags": ["Users"],
+        "summary": "Membuat user baru",
+        "operationId": "createUser",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CommentRequest" }
+              "schema": { "$ref": "#/components/schemas/CreateUserRequest" }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Comment added successfully",
+            "description": "User berhasil dibuat",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CommentResponse" }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "summary": "Get comments for a movie",
-        "parameters": [
-          {
-            "name": "movieId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "integer" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Comments fetched successfully",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/CommentListResponse" }
+                "schema": { "$ref": "#/components/schemas/User" }
               }
             }
           }
         }
       }
     },
-    "/favorites": {
+
+    "/products": {
       "post": {
-        "summary": "Add movie to favorites (x-www-form-urlencoded)",
+        "tags": ["Products"],
+        "summary": "Menambah produk",
+        "operationId": "addProduct",
         "requestBody": {
           "required": true,
           "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": { "$ref": "#/components/schemas/FavoriteRequest" }
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Product" }
             }
           }
         },
         "responses": {
-          "200": {
-            "description": "Movie added to favorites successfully",
+          "201": {
+            "description": "Produk berhasil ditambahkan",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FavoriteResponse" }
+                "schema": { "$ref": "#/components/schemas/Product" }
               }
             }
+          }
+        }
+      }
+    },
+
+    "/products/{productId}": {
+      "get": {
+        "tags": ["Products"],
+        "summary": "Detail produk",
+        "operationId": "getProductById",
+        "parameters": [
+          {
+            "name": "productId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detail produk",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Product" }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFoundError"
           }
         }
       }
     }
   },
+
   "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+
     "schemas": {
-      "RegisterRequest": {
-        "type": "object",
-        "required": ["name", "email", "password"],
-        "properties": {
-          "name": { "type": "string" },
-          "email": { "type": "string" },
-          "password": { "type": "string" }
-        }
-      },
-      "RegisterResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/User" }
-        }
-      },
-      "LoginRequest": {
-        "type": "object",
-        "required": ["email", "password"],
-        "properties": {
-          "email": { "type": "string" },
-          "password": { "type": "string" }
-        }
-      },
-      "LoginResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "token": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/User" }
-        }
-      },
-      "UploadResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "fileUrl": { "type": "string" }
-        }
-      },
       "User": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
+          "id": { "type": "string" },
+          "username": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "role": {
+            "type": "string",
+            "enum": ["admin", "employee", "guest"],
+            "default": "guest"
+          }
+        },
+        "required": ["id", "username", "email"]
+      },
+
+      "CreateUserRequest": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "writeOnly": true }
+        },
+        "required": ["username", "email", "password"]
+      },
+
+      "RegisterRequest": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        },
+        "required": ["username", "email", "password"]
+      },
+
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        },
+        "required": ["email", "password"]
+      },
+
+      "AuthResponse": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string" },
+          "user": { "$ref": "#/components/schemas/User" }
+        }
+      },
+
+      "Product": {
+        "type": "object",
+        "properties": {
+          "productId": { "type": "string" },
           "name": { "type": "string" },
-          "email": { "type": "string" },
-          "avatarUrl": { "type": "string" }
-        }
+          "price": { "type": "number", "format": "float" },
+          "stock": { "type": "integer", "format": "int32" }
+        },
+        "required": ["productId", "name", "price"]
       },
-      "Movie": {
+
+      "ErrorResponse": {
         "type": "object",
         "properties": {
-          "id": { "type": "integer" },
-          "title": { "type": "string" },
-          "description": { "type": "string" },
-          "genre": { "type": "string" },
-          "posterUrl": { "type": "string" }
+          "code": { "type": "string" },
+          "message": { "type": "string" }
         }
-      },
-      "MovieListResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "data": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/Movie" }
+      }
+    },
+
+    "responses": {
+      "UnauthorizedError": {
+        "description": "Token tidak valid",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
           }
         }
       },
-      "MovieResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/Movie" }
-        }
-      },
-      "MovieDetailResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "data": {
-            "type": "object",
-            "properties": {
-              "movie": { "$ref": "#/components/schemas/Movie" },
-              "comments": {
-                "type": "array",
-                "items": { "$ref": "#/components/schemas/Comment" }
-              }
-            }
+      "NotFoundError": {
+        "description": "Data tidak ditemukan",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
           }
         }
       },
-      "CommentRequest": {
-        "type": "object",
-        "required": ["content"],
-        "properties": {
-          "content": { "type": "string" }
-        }
-      },
-      "CommentResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/Comment" }
-        }
-      },
-      "Comment": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "integer" },
-          "user": { "$ref": "#/components/schemas/User" },
-          "content": { "type": "string" },
-          "createdAt": { "type": "string", "format": "date-time" }
-        }
-      },
-      "CommentListResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "data": {
-            "type": "array",
-            "items": { "$ref": "#/components/schemas/Comment" }
+      "BadRequestError": {
+        "description": "Input tidak valid",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
           }
-        }
-      },
-      "FavoriteRequest": {
-        "type": "object",
-        "required": ["movieId"],
-        "properties": {
-          "movieId": { "type": "integer" }
-        }
-      },
-      "FavoriteResponse": {
-        "type": "object",
-        "properties": {
-          "message": { "type": "string" },
-          "data": { "$ref": "#/components/schemas/Movie" }
         }
       }
     }

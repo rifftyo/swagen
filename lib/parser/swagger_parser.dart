@@ -27,6 +27,16 @@ class SwaggerParser {
     return null;
   }
 
+  bool useSecurity({required Map pathItem, required String method}) {
+    final operationSecurity = pathItem[method]?['security'];
+    if (operationSecurity is List) {
+      return operationSecurity.isNotEmpty;
+    }
+
+    final globalSecurity = swagger['security'];
+    return globalSecurity is List && globalSecurity.isNotEmpty;
+  }
+
   Map<String, dynamic> extractInlineResponseSchemas() {
     final paths = getPaths();
     final Map<String, dynamic> inlineSchemas = {};

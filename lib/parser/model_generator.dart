@@ -1,3 +1,5 @@
+import 'package:swagen/utils/map_type.dart';
+
 class ModelGenerator {
   final Set<String> _imports = {};
 
@@ -32,7 +34,7 @@ class ModelGenerator {
           final ref = items['\$ref'].split('/').last;
           type = 'List<$ref>';
         } else {
-          type = 'List<${_mapType(items?['type'])}>';
+          type = 'List<${mapType(items?['type'])}>';
         }
         buffer.writeln('  final $type $key;');
       } else if (value['\$ref'] != null) {
@@ -40,7 +42,7 @@ class ModelGenerator {
         type = ref;
         buffer.writeln('  final $type $key;');
       } else {
-        type = _mapType(value['type']);
+        type = mapType(value['type']);
         buffer.writeln('  final $type $key;');
       }
     });
@@ -66,7 +68,7 @@ class ModelGenerator {
             "      $key: (json['$key'] as List).map((e) => $ref.fromJson(e)).toList(),",
           );
         } else {
-          final itemType = _mapType(items?['type']);
+          final itemType = mapType(items?['type']);
           buffer.writeln(
             "      $key: (json['$key'] as List).map((e) => e as $itemType).toList(),",
           );
@@ -120,22 +122,5 @@ class ModelGenerator {
     buffer.writeln(classCode);
 
     return buffer.toString();
-  }
-
-  String _mapType(String? swaggerType) {
-    switch (swaggerType) {
-      case 'string':
-        return 'String';
-      case 'integer':
-        return 'int';
-      case 'boolean':
-        return 'bool';
-      case 'array':
-        return 'List<dynamic>';
-      case 'number':
-        return 'double';
-      default:
-        return 'dynamic';
-    }
   }
 }

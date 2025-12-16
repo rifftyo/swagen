@@ -1,12 +1,17 @@
+#!/usr/bin/env dart
 // ignore_for_file: avoid_print
 
 import 'dart:io';
 import 'package:swagen/parser/exception_generator.dart';
+import 'package:swagen/parser/failure_generator.dart';
 import 'package:yaml/yaml.dart';
 
 import 'package:swagen/parser/model_generator.dart';
 import 'package:swagen/parser/swagger_parser.dart';
 import 'package:swagen/parser/datasource_generator.dart';
+
+const String swagenVersion = '1.0.0';
+const String githubUrl = 'https://github.com/rifftyo/swagen';
 
 String getPackageName() {
   final pubspec = File('pubspec.yaml');
@@ -18,11 +23,33 @@ String getPackageName() {
 }
 
 void main(List<String> args) {
-  if (args.isEmpty) {
-    print('Usage: dart run swagger_model <swagger.json>');
+  if (args.isEmpty || args.contains('help')) {
+    _printHelp();
     return;
   }
 
+  if (args.contains('--version') || args.contains('-v')) {
+    print('🚀 swagen version $swagenVersion');
+    print('🔗 $githubUrl');
+    return;
+  }
+
+  if (args.first == 'convert') {
+    if (args.length < 2) {
+      print('❌ Please provide swagger file');
+      print('Example: swagen convert swagger.json');
+      return;
+    }
+
+    _convertSwagger(args.sublist(1));
+    return;
+  }
+
+  print('❌ Unknown command');
+  _printHelp();
+}
+
+void _convertSwagger(List<String> args) {
   final inputPath = args[0];
 
   final packageIndex = args.indexOf('--package');
@@ -40,8 +67,9 @@ void main(List<String> args) {
   final modelGenerator = ModelGenerator();
   final datasourceGenerator = DatasourceGenerator(packageName);
   final exceptionGenerator = ExceptionGenerator();
+  final failureGenerator = FailureGenerator();
 
-  // 1. Generate RemoteDataSource
+  // Generate RemoteDataSource
   final datasourceOutputPath = 'lib/data/datasources';
   Directory(datasourceOutputPath).createSync(recursive: true);
 
@@ -49,11 +77,12 @@ void main(List<String> args) {
     paths,
     baseUrl,
     schemas,
+    parser,
   );
 
   final usedModels = datasourceGenerator.usedImports;
 
-  // 2. Generate Model
+  // Generate Models
   final modelOutputPath = 'lib/data/models';
   Directory(modelOutputPath).createSync(recursive: true);
 
@@ -65,7 +94,6 @@ void main(List<String> args) {
 
     final schema = schemas[name]!;
     final dartCode = modelGenerator.generateWithImports(name, schema);
-
     final deps = modelGenerator.usedImports;
 
     final file = File('$modelOutputPath/${name.toLowerCase()}.dart');
@@ -81,21 +109,45 @@ void main(List<String> args) {
     generateRecursive(name);
   }
 
-  // 3 Write DataSource
+  // 3️⃣ Generate Exception & Failure
+  exceptionGenerator.generate('lib/common/exception.dart');
+  failureGenerator.generate('lib/common/failure.dart');
+
+  // 4️⃣ Write DataSource
   final datasourceFile = File('$datasourceOutputPath/remote_datasource.dart');
   datasourceFile.writeAsStringSync(datasourceCode);
   print('✅ Generated RemoteDataSource: ${datasourceFile.path}');
 
-  // 4. Generate Exceptions
-  exceptionGenerator.generate('lib/common/exception.dart');
+  // 5️⃣ Format code
+  try {
+    print('\n🎨 Formatting generated files...');
+    final result = Process.runSync('dart', [
+      'format',
+      datasourceFile.path,
+    ], runInShell: true);
 
-  // After generation success
-  print('\n🚀 All files have been successfully generated!');
-  print('👉 Next steps:');
-  print('1. Install required dependencies by running:');
-  print('   flutter pub add http');
-  print('2. Then run:');
-  print('   flutter pub get');
+    if (result.stderr.toString().isNotEmpty) {
+      print('⚠️ Format warning: ${result.stderr}');
+    } else {
+      print('✅ Formatting completed');
+    }
+  } catch (e) {
+    print('⚠️ Failed to format file: $e');
+  }
+
+  // 6️⃣ Summary
+  print('\n🚀 Swagger converted successfully!');
+  print('📂 Output directories:');
+  print('   - lib/data/models');
+  print('   - lib/data/datasources');
+  print('   - lib/common');
+
+  // 7️⃣ Dependency install prompt
+  print('\n📦 Required dependencies:');
+  print('  - http');
+  print('  - flutter_secure_storage');
+  print('  - dartz');
+  print('  - equatable');
 
   stdout.write(
     '\n❓ Do you want to install dependencies automatically? (y/n): ',
@@ -104,21 +156,63 @@ void main(List<String> args) {
 
   if (input == 'y' || input == 'yes') {
     final flutterCmd = Platform.isWindows ? 'flutter.bat' : 'flutter';
+
     try {
-      print('\n⚡ Installing dependencies automatically...');
-      final result = Process.runSync(flutterCmd, ['pub', 'add', 'http']);
+      print('\n⚡ Installing dependencies...');
+      final result = Process.runSync(flutterCmd, [
+        'pub',
+        'add',
+        'http',
+        'dartz',
+        'equatable',
+        'flutter_secure_storage',
+      ], runInShell: true);
+
       print(result.stdout);
+
       if (result.stderr.toString().isNotEmpty) {
         print('⚠️ Error: ${result.stderr}');
       } else {
         print('✅ Dependencies installed successfully!');
       }
     } catch (e) {
-      print('❌ Failed to install dependencies automatically: $e');
+      print('❌ Failed to install dependencies: $e');
     }
   } else {
     print(
-      '\n👉 Skipping auto-install. Please install manually with: flutter pub add http',
+      '\n👉 Skipping auto-install.\n'
+      'Run manually:\n'
+      'flutter pub add http dartz equatable flutter_secure_storage',
     );
   }
+}
+
+void _printHelp() {
+  print('''
+🚀 SWAGEN - Swagger to Flutter Generator
+
+USAGE:
+  swagen <command> [options]
+
+COMMANDS:
+  convert <swagger.json>   Convert swagger file to Flutter code
+  --version, -v            Show swagen version
+  help                     Show this help
+
+OPTIONS:
+  --package <name>         Custom package name
+
+EXAMPLES:
+  swagen convert swagger.json
+  swagen convert swagger.json --package my_app
+  swagen --version
+
+DOCUMENTATION:
+  📘 GitHub: $githubUrl
+  🧩 Example Swagger:
+  $githubUrl/tree/main/examples
+
+ISSUES & CONTRIBUTIONS:
+  $githubUrl/issues
+''');
 }

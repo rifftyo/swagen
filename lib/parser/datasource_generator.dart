@@ -1,3 +1,7 @@
+import 'package:swagen/parser/swagger_parser.dart';
+import 'package:swagen/utils/camel_case_convert.dart';
+import 'package:swagen/utils/map_type.dart';
+
 class DatasourceGenerator {
   final Set<String> _imports = {};
   final String projectName;
@@ -10,9 +14,15 @@ class DatasourceGenerator {
     Map<String, dynamic> paths,
     String? baseUrl,
     Map<String, dynamic> componentsSchemas,
+    SwaggerParser parser,
   ) {
     final abstractClass = _generateAbstractClass(paths, componentsSchemas);
-    final implClass = _generateImplClass(paths, baseUrl, componentsSchemas);
+    final implClass = _generateImplClass(
+      paths,
+      baseUrl,
+      componentsSchemas,
+      parser,
+    );
     final imports = _generateImports();
 
     return "$imports\n\n$abstractClass\n\n$implClass";
@@ -24,6 +34,9 @@ class DatasourceGenerator {
     buffer.writeln("import 'dart:convert';");
     buffer.writeln("import 'dart:io';");
     buffer.writeln("import 'package:http/http.dart' as http;");
+    buffer.writeln(
+      "import 'package:flutter_secure_storage/flutter_secure_storage.dart';",
+    );
     buffer.writeln();
     buffer.writeln("import 'package:$projectName/common/exception.dart';");
     if (_imports.isNotEmpty) {
@@ -94,7 +107,10 @@ class DatasourceGenerator {
                       final isRequired = requiredFields.contains(name);
                       bodyParams.add("File${isRequired ? '' : '?'} $name");
                     } else {
-                      final type = _mapType(propSchema['type']);
+                      final type = mapType(
+                        propSchema['type'],
+                        schema: propSchema,
+                      );
                       bodyParams.add("$type $name");
                     }
                   }
@@ -111,7 +127,10 @@ class DatasourceGenerator {
                     final isRequired = requiredFields.contains(name);
                     bodyParams.add("File${isRequired ? '' : '?'} $name");
                   } else {
-                    final type = _mapType(propSchema['type']);
+                    final type = mapType(
+                      propSchema['type'],
+                      schema: propSchema,
+                    );
                     bodyParams.add("$type $name");
                   }
                 }
@@ -122,15 +141,20 @@ class DatasourceGenerator {
 
         final dartParams = [
           ...pathParams.map((p) {
-            final type = _mapType(p['schema']?['type']);
+            final schema = p['schema'] as Map<String, dynamic>?;
+            final type = mapType(schema?['type'], schema: schema);
             final name = p['name'];
             return "$type $name";
           }),
           ...queryParams.map((p) {
-            final type = _mapType(p['schema']?['type']);
+            final schema = p['schema'] as Map<String, dynamic>?;
+            final type = mapType(schema?['type'], schema: schema);
             final name = p['name'];
-            return "$type? $name";
+            final isRequired = p['required'] == true;
+
+            return isRequired ? "$type $name" : "$type? $name";
           }),
+
           ...bodyParams,
         ].join(", ");
 
@@ -147,19 +171,43 @@ class DatasourceGenerator {
     Map<String, dynamic> paths,
     String? baseUrl,
     Map<String, dynamic> componentsSchemas,
+    SwaggerParser parser,
   ) {
     final buffer = StringBuffer();
 
     buffer.writeln("class RemoteDataSourceImpl implements RemoteDataSource {");
     buffer.writeln("  static const BASE_URL = '${baseUrl ?? ''}';");
+    buffer.writeln("  static const tokenKey = 'access_token';");
     buffer.writeln();
     buffer.writeln("  final http.Client client;");
+    buffer.writeln("  final FlutterSecureStorage storage;");
     buffer.writeln();
-    buffer.writeln("  RemoteDataSourceImpl(this.client);");
+    buffer.writeln("  RemoteDataSourceImpl(this.client, this.storage);");
+
     buffer.writeln();
     buffer.writeln('''
-  Future<Map<String, String>> _getHeaders() async {
-    final headers = {'Content-Type': 'application/json'};
+  Future<Map<String, String>> _getHeaders({
+    bool withAuth = false,
+    bool isMultipart = false,
+    bool isFormUrlEncoded = false,
+  }) async {
+    final headers = <String, String>{};
+
+    if (!isMultipart) {
+      if (isFormUrlEncoded) {
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      } else {
+        headers['Content-Type'] = 'application/json';
+      }
+    }
+
+    if (withAuth) {
+      final token = await storage.read(key: tokenKey);
+      if (token != null) {
+        headers['Authorization'] = 'Bearer \$token';
+      }
+    }
+
     return headers;
   }
 ''');
@@ -178,12 +226,14 @@ class DatasourceGenerator {
     buffer.writeln();
     paths.forEach((path, methods) {
       methods.forEach((method, details) {
+        final secured = parser.useSecurity(pathItem: methods, method: method);
         final funcName = _generateMethodName(
           method,
           path,
           details['operationId'],
         );
         final returnType = _extractReturnType(details, path);
+        final returnStatement = _generateReturnStatement(returnType);
 
         final params = (details['parameters'] as List?) ?? [];
         final pathParams = params.where((p) => p['in'] == 'path').toList();
@@ -229,7 +279,10 @@ class DatasourceGenerator {
                       final isRequired = requiredFields.contains(name);
                       bodyParams.add("File${isRequired ? '' : '?'} $name");
                     } else {
-                      final type = _mapType(propSchema['type']);
+                      final type = mapType(
+                        propSchema['type'],
+                        schema: propSchema,
+                      );
                       bodyParams.add("$type $name");
                     }
                   }
@@ -246,7 +299,10 @@ class DatasourceGenerator {
                     final isRequired = requiredFields.contains(name);
                     bodyParams.add("File${isRequired ? '' : '?'} $name");
                   } else {
-                    final type = _mapType(propSchema['type']);
+                    final type = mapType(
+                      propSchema['type'],
+                      schema: propSchema,
+                    );
                     bodyParams.add("$type $name");
                   }
                 }
@@ -257,15 +313,20 @@ class DatasourceGenerator {
 
         final dartParams = [
           ...pathParams.map((p) {
-            final type = _mapType(p['schema']?['type']);
+            final schema = p['schema'] as Map<String, dynamic>?;
+            final type = mapType(schema?['type'], schema: schema);
             final name = p['name'];
             return "$type $name";
           }),
           ...queryParams.map((p) {
-            final type = _mapType(p['schema']?['type']);
+            final schema = p['schema'] as Map<String, dynamic>?;
+            final type = mapType(schema?['type'], schema: schema);
             final name = p['name'];
-            return "$type? $name";
+            final isRequired = p['required'] == true;
+
+            return isRequired ? "$type $name" : "$type? $name";
           }),
+
           ...bodyParams,
         ].join(", ");
 
@@ -303,7 +364,10 @@ class DatasourceGenerator {
   Future<$returnType> $funcName($dartParams) async {
     final uri = Uri.parse('\$BASE_URL$replacedPath$queryString');
     final request = http.MultipartRequest('${method.toUpperCase()}', uri);
-    final headers = await _getHeaders();
+    final headers = await _getHeaders(
+      withAuth: $secured,
+      isMultipart: true,
+    );
     request.headers.addAll(headers);
 ''');
 
@@ -335,9 +399,7 @@ class DatasourceGenerator {
           buffer.writeln('''
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
-
-    final jsonMap = await _handleResponse(response);
-    return $returnType.fromJson(jsonMap);
+    $returnStatement
   }
 ''');
         } else {
@@ -362,11 +424,12 @@ class DatasourceGenerator {
   Future<$returnType> $funcName($dartParams) async {
     final response = await client.${method.toLowerCase()}(
       Uri.parse('\$BASE_URL$replacedPath$queryString'),
-      headers: await _getHeaders(),
-      ${bodyString.isNotEmpty ? 'body: $bodyString,' : ''}
+      headers: await _getHeaders(
+        withAuth: $secured,
+        ${contentType == 'application/x-www-form-urlencoded' ? 'isFormUrlEncoded: true,' : ''}),
+        ${bodyString.isNotEmpty ? 'body: $bodyString,' : ''}
     );
-    final jsonMap = await _handleResponse(response);
-    return $returnType.fromJson(jsonMap);
+    $returnStatement
   }
 ''');
         }
@@ -377,9 +440,67 @@ class DatasourceGenerator {
     return buffer.toString();
   }
 
+  String _generateReturnStatement(String returnType) {
+    final isList = returnType.startsWith('List<');
+    final isVoid = returnType == 'void';
+    final isMap = returnType.startsWith('Map<');
+    final isPrimitive = const {
+      'String',
+      'int',
+      'bool',
+      'double',
+      'num',
+      'dynamic',
+    }.contains(returnType);
+
+    if (isVoid) {
+      return '''
+    await _handleResponse(response);
+    return;
+''';
+    }
+
+    if (isPrimitive) {
+      return '''
+    final result = await _handleResponse(response);
+    return result as $returnType;
+''';
+    }
+
+    if (isList) {
+      final itemType = returnType.substring(5, returnType.length - 1);
+
+      return '''
+    final jsonMap = await _handleResponse(response);
+    return (jsonMap as List)
+        .map((e) => $itemType.fromJson(e))
+        .toList();
+''';
+    }
+
+    if (isMap) {
+      final valueType =
+          returnType.substring(4, returnType.length - 1).split(',')[1].trim();
+
+      return '''
+    final result = await _handleResponse(response);
+    return Map<String, $valueType>.from(
+      (result as Map).map(
+        (k, v) => MapEntry(k.toString(), v as $valueType),
+      ),
+    );
+''';
+    }
+
+    return '''
+    final jsonMap = await _handleResponse(response);
+    return $returnType.fromJson(jsonMap);
+''';
+  }
+
   String _generateMethodName(String method, String path, String? operationId) {
     if (operationId != null && operationId.isNotEmpty) {
-      return _toCamelCase(operationId);
+      return camelCaseConvert(operationId);
     }
 
     var cleanPath =
@@ -463,32 +584,20 @@ class DatasourceGenerator {
       return className;
     }
 
+    if (content['type'] == 'object' &&
+        content['additionalProperties'] != null) {
+      final valueSchema =
+          content['additionalProperties'] as Map<String, dynamic>;
+
+      final valueType = mapType(valueSchema['type'], schema: valueSchema);
+
+      return 'Map<String, $valueType>';
+    }
+
     if (content['type'] != null) {
-      return _mapType(content['type']);
+      return mapType(content['type']);
     }
 
     return 'dynamic';
-  }
-
-  String _toCamelCase(String text) {
-    return text.replaceAllMapped(
-      RegExp(r'_(\w)'),
-      (m) => m.group(1)!.toUpperCase(),
-    );
-  }
-
-  String _mapType(String? swaggerType) {
-    switch (swaggerType) {
-      case 'string':
-        return 'String';
-      case 'integer':
-        return 'int';
-      case 'boolean':
-        return 'bool';
-      case 'number':
-        return 'double';
-      default:
-        return 'dynamic';
-    }
   }
 }

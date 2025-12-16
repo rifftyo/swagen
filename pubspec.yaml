@@ -1,15 +1,21 @@
 name: swagen
-description: "A new Flutter package project."
+description: " A code generator tool that converts Swagger/OpenAPI specification into
+  Dart data models, RemoteDataSource classes, and structured exception handling.
+  This simplifies API integration by automatically generating typed models,
+  reducing manual coding effort, and ensuring consistency across the codebase."
 version: 0.0.1
-homepage: main
+homepage: https://github.com/rifftyo/swagen
 
 environment:
   sdk: ^3.7.2
   flutter: ">=1.17.0"
 
 dependencies:
+  dartz: ^0.10.1
+  equatable: ^2.0.7
   flutter:
     sdk: flutter
+  flutter_secure_storage: ^10.0.0
   http: ^1.6.0
   yaml: ^3.1.3
 
@@ -17,6 +23,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+
+executables:
+  swagen: swagen
+
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
