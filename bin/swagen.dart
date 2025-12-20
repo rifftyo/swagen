@@ -4,6 +4,10 @@
 import 'dart:io';
 import 'package:swagen/parser/exception_generator.dart';
 import 'package:swagen/parser/failure_generator.dart';
+import 'package:swagen/parser/repository_generator.dart';
+import 'package:swagen/parser/repository_impl_generator.dart';
+import 'package:swagen/utils/group_by_tag.dart';
+import 'package:swagen/utils/string_case.dart';
 import 'package:yaml/yaml.dart';
 
 import 'package:swagen/parser/model_generator.dart';
@@ -66,6 +70,8 @@ void _convertSwagger(List<String> args) {
 
   final modelGenerator = ModelGenerator();
   final datasourceGenerator = DatasourceGenerator(packageName);
+  final repositoryGenerator = RepositoryGenerator(packageName);
+  final repositoryImplGenerator = RepositoryImplGenerator(packageName);
   final exceptionGenerator = ExceptionGenerator();
   final failureGenerator = FailureGenerator();
 
@@ -114,26 +120,71 @@ void _convertSwagger(List<String> args) {
   failureGenerator.generate('lib/common/failure.dart');
 
   // 4️⃣ Write DataSource
-  final datasourceFile = File('$datasourceOutputPath/remote_datasource.dart');
+  final datasourceFile = File('$datasourceOutputPath/remote_data_source.dart');
   datasourceFile.writeAsStringSync(datasourceCode);
   print('✅ Generated RemoteDataSource: ${datasourceFile.path}');
 
-  // 5️⃣ Format code
-  try {
-    print('\n🎨 Formatting generated files...');
-    final result = Process.runSync('dart', [
-      'format',
-      datasourceFile.path,
-    ], runInShell: true);
+  // 5️⃣ Generate Repository
+  final repositoryOutputPath = 'lib/domain/repositories';
+  Directory(repositoryOutputPath).createSync(recursive: true);
 
-    if (result.stderr.toString().isNotEmpty) {
-      print('⚠️ Format warning: ${result.stderr}');
-    } else {
-      print('✅ Formatting completed');
-    }
-  } catch (e) {
-    print('⚠️ Failed to format file: $e');
+  final groupedPaths = groupPathsByTag(paths);
+
+  for (final entry in groupedPaths.entries) {
+    final tag = entry.key;
+    final tagPaths = entry.value;
+
+    final repositoryName =
+        tag == 'default' ? '${packageName}Repository' : '${tag}Repository';
+
+    final repositoryCode = repositoryGenerator.generateRepository(
+      repositoryName.replaceAll('Repository', ''),
+      tagPaths,
+      schemas,
+    );
+
+    final fileName = repositoryName.snakeCase;
+
+    final repositoryFile = File('$repositoryOutputPath/$fileName.dart');
+
+    repositoryFile.writeAsStringSync(repositoryCode);
+    print('✅ Generated Repository: ${repositoryFile.path}');
   }
+
+  // 5️⃣ Generate Repository Implementation
+  final repositoryImplOutputPath = 'lib/data/repositories';
+  Directory(repositoryImplOutputPath).createSync(recursive: true);
+
+  for (final entry in groupedPaths.entries) {
+    final tag = entry.key;
+    final tagPaths = entry.value;
+
+    final repositoryName =
+        tag == 'default' ? '${packageName}Repository' : '${tag}Repository';
+
+    final repositoryCode = repositoryImplGenerator.generateRepositoryImpl(
+      repositoryName.replaceAll('Repository', ''),
+      tagPaths,
+      schemas,
+    );
+
+    final fileName = repositoryName.snakeCase;
+
+    final repositoryFile = File('$repositoryImplOutputPath/$fileName.dart');
+
+    repositoryFile.writeAsStringSync(repositoryCode);
+    print('✅ Generated Repository: ${repositoryFile.path}');
+  }
+
+  // 5️⃣ Format code
+  print('\n🎨 Formatting generated files...');
+  Process.runSync('dart', [
+    'format',
+    'lib/data',
+    'lib/domain',
+    'lib/common',
+  ], runInShell: true);
+  print('✅ Formatting completed');
 
   // 6️⃣ Summary
   print('\n🚀 Swagger converted successfully!');

@@ -34,7 +34,7 @@ class ModelGenerator {
           final ref = items['\$ref'].split('/').last;
           type = 'List<$ref>';
         } else {
-          type = 'List<${mapType(items?['type'])}>';
+          type = 'List<${mapType(items)}>';
         }
         buffer.writeln('  final $type $key;');
       } else if (value['\$ref'] != null) {
@@ -42,7 +42,7 @@ class ModelGenerator {
         type = ref;
         buffer.writeln('  final $type $key;');
       } else {
-        type = mapType(value['type']);
+        type = mapType(value);
         buffer.writeln('  final $type $key;');
       }
     });
@@ -68,7 +68,7 @@ class ModelGenerator {
             "      $key: (json['$key'] as List).map((e) => $ref.fromJson(e)).toList(),",
           );
         } else {
-          final itemType = mapType(items?['type']);
+          final itemType = mapType(items);
           buffer.writeln(
             "      $key: (json['$key'] as List).map((e) => e as $itemType).toList(),",
           );

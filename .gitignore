@@ -32,4 +32,5 @@ build/
 
 lib/data
 lib/common
+lib/domain
 assets

@@ -1,6 +1,7 @@
 import 'package:swagen/parser/swagger_parser.dart';
 import 'package:swagen/utils/camel_case_convert.dart';
 import 'package:swagen/utils/map_type.dart';
+import 'package:swagen/utils/request_params.dart';
 
 class DatasourceGenerator {
   final Set<String> _imports = {};
@@ -16,6 +17,16 @@ class DatasourceGenerator {
     Map<String, dynamic> componentsSchemas,
     SwaggerParser parser,
   ) {
+    bool needsFile = false;
+
+    paths.forEach((path, methods) {
+      methods.forEach((_, details) {
+        if (_useFile(details, componentsSchemas, _imports)) {
+          needsFile = true;
+        }
+      });
+    });
+
     final abstractClass = _generateAbstractClass(paths, componentsSchemas);
     final implClass = _generateImplClass(
       paths,
@@ -23,16 +34,20 @@ class DatasourceGenerator {
       componentsSchemas,
       parser,
     );
-    final imports = _generateImports();
+    final imports = _generateImports(needsFile);
 
     return "$imports\n\n$abstractClass\n\n$implClass";
   }
 
-  String _generateImports() {
+  String _generateImports(bool needsFile) {
     final buffer = StringBuffer();
 
     buffer.writeln("import 'dart:convert';");
-    buffer.writeln("import 'dart:io';");
+
+    if (needsFile) {
+      buffer.writeln("import 'dart:io';");
+    }
+
     buffer.writeln("import 'package:http/http.dart' as http;");
     buffer.writeln(
       "import 'package:flutter_secure_storage/flutter_secure_storage.dart';",
@@ -71,90 +86,27 @@ class DatasourceGenerator {
         final pathParams = params.where((p) => p['in'] == 'path').toList();
         final queryParams = params.where((p) => p['in'] == 'query').toList();
 
-        final bodyParams = <String>[];
-
-        final requestBody = details['requestBody'];
-        if (requestBody != null) {
-          final content = requestBody['content'] as Map?;
-
-          final appJson = content?['application/json'] as Map?;
-          final appForm = content?['application/x-www-form-urlencoded'] as Map?;
-          final multipartForm = content?['multipart/form-data'] as Map?;
-
-          Map<String, dynamic>? schema;
-          if (appJson != null) {
-            schema = appJson['schema'] as Map<String, dynamic>?;
-          } else if (appForm != null) {
-            schema = appForm['schema'] as Map<String, dynamic>?;
-          } else if (multipartForm != null) {
-            schema = multipartForm['schema'] as Map<String, dynamic>?;
-          }
-
-          if (schema != null) {
-            if (schema['\$ref'] != null) {
-              final refPath = schema['\$ref'] as String;
-              final refName = refPath.split('/').last;
-              final refSchema = componentsSchemas[refName];
-
-              if (refSchema != null && refSchema['properties'] != null) {
-                final props = refSchema['properties'] as Map<String, dynamic>;
-                final requiredFields =
-                    (refSchema['required'] as List?)?.cast<String>() ?? [];
-
-                props.forEach((name, propSchema) {
-                  if (requiredFields.contains(name)) {
-                    if (propSchema['format'] == 'binary') {
-                      final isRequired = requiredFields.contains(name);
-                      bodyParams.add("File${isRequired ? '' : '?'} $name");
-                    } else {
-                      final type = mapType(
-                        propSchema['type'],
-                        schema: propSchema,
-                      );
-                      bodyParams.add("$type $name");
-                    }
-                  }
-                });
-              }
-            } else if (schema['properties'] != null) {
-              final props = schema['properties'] as Map<String, dynamic>;
-              final requiredFields =
-                  (schema['required'] as List?)?.cast<String>() ?? [];
-
-              props.forEach((name, propSchema) {
-                if (requiredFields.contains(name)) {
-                  if (propSchema['format'] == 'binary') {
-                    final isRequired = requiredFields.contains(name);
-                    bodyParams.add("File${isRequired ? '' : '?'} $name");
-                  } else {
-                    final type = mapType(
-                      propSchema['type'],
-                      schema: propSchema,
-                    );
-                    bodyParams.add("$type $name");
-                  }
-                }
-              });
-            }
-          }
-        }
+        final bodyParams = extractRequestParams(
+          details,
+          componentsSchemas,
+          _imports,
+        );
 
         final dartParams = [
           ...pathParams.map((p) {
             final schema = p['schema'] as Map<String, dynamic>?;
-            final type = mapType(schema?['type'], schema: schema);
+            final type = mapType(schema);
             final name = p['name'];
             return "$type $name";
           }),
           ...queryParams.map((p) {
             final schema = p['schema'] as Map<String, dynamic>?;
-            final type = mapType(schema?['type'], schema: schema);
+            final type = mapType(schema);
             final name = p['name'];
             final isRequired = p['required'] == true;
 
             return isRequired ? "$type $name" : "$type? $name";
           }),
-
           ...bodyParams,
         ].join(", ");
 
@@ -239,88 +191,23 @@ class DatasourceGenerator {
         final pathParams = params.where((p) => p['in'] == 'path').toList();
         final queryParams = params.where((p) => p['in'] == 'query').toList();
 
-        final bodyParams = <String>[];
+        final bodyParams = extractRequestParams(
+          details,
+          componentsSchemas,
+          _imports,
+        );
         String? contentType;
-
-        final requestBody = details['requestBody'];
-        if (requestBody != null) {
-          final content = requestBody['content'] as Map?;
-
-          final appJson = content?['application/json'] as Map?;
-          final appForm = content?['application/x-www-form-urlencoded'] as Map?;
-          final multipartForm = content?['multipart/form-data'] as Map?;
-
-          Map<String, dynamic>? schema;
-          if (appJson != null) {
-            schema = appJson['schema'] as Map<String, dynamic>?;
-            contentType = 'application/json';
-          } else if (appForm != null) {
-            schema = appForm['schema'] as Map<String, dynamic>?;
-            contentType = 'application/x-www-form-urlencoded';
-          } else if (multipartForm != null) {
-            schema = multipartForm['schema'] as Map<String, dynamic>?;
-            contentType = 'multipart/form-data';
-          }
-
-          if (schema != null) {
-            if (schema['\$ref'] != null) {
-              final refPath = schema['\$ref'] as String;
-              final refName = refPath.split('/').last;
-              final refSchema = componentsSchemas[refName];
-
-              if (refSchema != null && refSchema['properties'] != null) {
-                final props = refSchema['properties'] as Map<String, dynamic>;
-                final requiredFields =
-                    (refSchema['required'] as List?)?.cast<String>() ?? [];
-
-                props.forEach((name, propSchema) {
-                  if (requiredFields.contains(name)) {
-                    if (propSchema['format'] == 'binary') {
-                      final isRequired = requiredFields.contains(name);
-                      bodyParams.add("File${isRequired ? '' : '?'} $name");
-                    } else {
-                      final type = mapType(
-                        propSchema['type'],
-                        schema: propSchema,
-                      );
-                      bodyParams.add("$type $name");
-                    }
-                  }
-                });
-              }
-            } else if (schema['properties'] != null) {
-              final props = schema['properties'] as Map<String, dynamic>;
-              final requiredFields =
-                  (schema['required'] as List?)?.cast<String>() ?? [];
-
-              props.forEach((name, propSchema) {
-                if (requiredFields.contains(name)) {
-                  if (propSchema['format'] == 'binary') {
-                    final isRequired = requiredFields.contains(name);
-                    bodyParams.add("File${isRequired ? '' : '?'} $name");
-                  } else {
-                    final type = mapType(
-                      propSchema['type'],
-                      schema: propSchema,
-                    );
-                    bodyParams.add("$type $name");
-                  }
-                }
-              });
-            }
-          }
-        }
 
         final dartParams = [
           ...pathParams.map((p) {
             final schema = p['schema'] as Map<String, dynamic>?;
-            final type = mapType(schema?['type'], schema: schema);
+            final type = mapType(schema);
             final name = p['name'];
             return "$type $name";
           }),
           ...queryParams.map((p) {
             final schema = p['schema'] as Map<String, dynamic>?;
-            final type = mapType(schema?['type'], schema: schema);
+            final type = mapType(schema);
             final name = p['name'];
             final isRequired = p['required'] == true;
 
@@ -589,15 +476,36 @@ class DatasourceGenerator {
       final valueSchema =
           content['additionalProperties'] as Map<String, dynamic>;
 
-      final valueType = mapType(valueSchema['type'], schema: valueSchema);
+      final valueType = mapType(valueSchema['schema']);
 
       return 'Map<String, $valueType>';
     }
 
     if (content['type'] != null) {
-      return mapType(content['type']);
+      return mapType(content);
     }
 
     return 'dynamic';
+  }
+
+  bool _useFile(
+    Map<String, dynamic> details,
+    Map<String, dynamic> componentsSchemas,
+    Set<String> imports,
+  ) {
+    bool usesFile = false;
+
+    final bodyParams = extractRequestParams(
+      details,
+      componentsSchemas,
+      imports,
+    );
+
+    for (final param in bodyParams) {
+      if (param.contains('File')) {
+        usesFile = true;
+      }
+    }
+    return usesFile;
   }
 }

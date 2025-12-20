@@ -1,106 +1,182 @@
-// class RepositoryGenerator {
-//   final Set<String> _imports = {};
-//   final String projectName;
+import 'package:swagen/utils/camel_case_convert.dart';
+import 'package:swagen/utils/map_type.dart';
+import 'package:swagen/utils/request_params.dart';
 
-//   Set<String> get usedImports => _imports;
+class RepositoryGenerator {
+  final String projectName;
 
-//   RepositoryGenerator(this.projectName);
+  RepositoryGenerator(this.projectName);
 
-//   String _generateImports() {
-//     final buffer = StringBuffer();
+  String generateRepository(
+    String className,
+    Map<String, dynamic> paths,
+    Map<String, dynamic> componentsSchemas,
+  ) {
+    final buffer = StringBuffer();
+    final imports = <String>{};
+    bool needsFile = false;
 
-//     buffer.writeln("import 'dart:io';");
+    paths.forEach((path, methods) {
+      methods.forEach((_, details) {
+        _extractReturnType(details, path, imports);
+        _generateParameters(details, componentsSchemas, imports);
+        if (_useFile(details, componentsSchemas, imports)) {
+          needsFile = true;
+        }
+      });
+    });
 
-//     buffer.writeln();
+    if (needsFile) {
+      buffer.writeln("import 'dart:io';");
+    }
 
-//     buffer.writeln("import 'package:dartz/dartz.dart';");
-//     buffer.writeln("import 'package:$projectName/common/failure.dart';");
-//     if (_imports.isNotEmpty) {
-//       for (var imp in _imports) {
-//         buffer.writeln(
-//           "import 'package:$projectName/data/models/${imp.toLowerCase()}.dart';",
-//         );
-//       }
-//     }
+    buffer.writeln("import 'package:dartz/dartz.dart';");
+    buffer.writeln("import 'package:$projectName/common/failure.dart';");
 
-//     return buffer.toString();
-//   }
+    for (var imp in imports) {
+      buffer.writeln(
+        "import 'package:$projectName/data/models/${imp.toLowerCase()}.dart';",
+      );
+    }
 
-//   Map<String, String> generateRepositories(Map<String, dynamic> paths) {
-//     final Map<String, List<_RepoMethod>> groupedByTag = {};
+    buffer.writeln();
+    buffer.writeln('abstract class ${className}Repository {');
 
-//     paths.forEach((path, methods) {
-//       if (methods is! Map) return;
+    paths.forEach((path, methods) {
+      methods.forEach((method, details) {
+        final funcName = _generateMethodName(
+          method,
+          path,
+          details['operationId'],
+        );
 
-//       methods.forEach((httpMethod, detail) {
-//         final tags = detail['tags'] as List?;
-//         if (tags == null || tags.isEmpty) return;
+        final returnType = _extractReturnType(details, path, imports);
+        final params = _generateParameters(details, componentsSchemas, imports);
 
-//         final tag = tags.first.toString();
-//         groupedByTag.putIfAbsent(tag, () => []);
+        buffer.writeln(
+          '  Future<Either<Failure, $returnType>> $funcName($params);',
+        );
+      });
+    });
 
-//         final methodName = detail['operationId'];
-//         final responseSchema = _extractResponseSchmea(detail);
+    buffer.writeln('}');
+    return buffer.toString();
+  }
 
-//         if (responseSchema != null) {
-//           _imports.add(responseSchema);
-//         }
+  String _generateParameters(
+    Map<String, dynamic> details,
+    Map<String, dynamic> componentsSchemas,
+    Set<String> imports,
+  ) {
+    final params = (details['parameters'] as List?) ?? [];
+    final pathParams = params.where((p) => p['in'] == 'path').toList();
+    final queryParams = params.where((p) => p['in'] == 'query').toList();
 
-//         groupedByTag[tag]!.add(
-//           _RepoMethod(name: methodName, returnType: responseSchema ?? 'void'),
-//         );
-//       });
-//     });
+    final bodyParams = extractRequestParams(
+      details,
+      componentsSchemas,
+      imports,
+    );
 
-//     final Map<String, String> result = {};
+    final dartParams = [
+      ...pathParams.map((p) {
+        final schema = p['schema'] as Map<String, dynamic>?;
+        final type = mapType(schema);
+        final name = p['name'];
+        return "$type $name";
+      }),
+      ...queryParams.map((p) {
+        final schema = p['schema'] as Map<String, dynamic>?;
+        final type = mapType(schema);
+        final name = p['name'];
+        final isRequired = p['required'] == true;
 
-//     groupedByTag.forEach((tag, methods) {
-//       final className = '${tag}Repository';
+        return isRequired ? "$type $name" : "$type? $name";
+      }),
+      ...bodyParams,
+    ].join(", ");
 
-//       final buffer = StringBuffer();
-//       buffer.write(_generateImports());
+    return dartParams;
+  }
 
-//       buffer.writeln('abstract class $className {');
+  bool _useFile(
+    Map<String, dynamic> details,
+    Map<String, dynamic> componentsSchemas,
+    Set<String> imports,
+  ) {
+    bool usesFile = false;
 
-//       for (var m in methods) {
-//         buffer.writeln(
-//           '    Future<Either<Failure, ${m.returnType}>> ${m.name}();',
-//         );
-//       }
+    final bodyParams = extractRequestParams(
+      details,
+      componentsSchemas,
+      imports,
+    );
 
-//       buffer.writeln('}');
-//       result[tag.toLowerCase()] = buffer.toString();
-//     });
+    for (final param in bodyParams) {
+      if (param.contains('File')) {
+        usesFile = true;
+      }
+    }
+    return usesFile;
+  }
 
-//     return result;
-//   }
+  String _generateMethodName(String method, String path, String? operationId) {
+    if (operationId != null && operationId.isNotEmpty) {
+      return camelCaseConvert(operationId);
+    }
 
-//   String? _extractResponseSchmea(Map<String, dynamic> detail) {
-//     final responses = detail['responses'];
-//     if (responses is! Map) return null;
+    final cleanPath =
+        path
+            .replaceAll(RegExp(r'\{|\}'), '')
+            .split('/')
+            .where((e) => e.isNotEmpty)
+            .map((e) => e[0].toUpperCase() + e.substring(1))
+            .join();
 
-//     for (var res in responses.values) {
-//       final content = res['content'];
-//       if (content == null) continue;
+    switch (method.toLowerCase()) {
+      case 'get':
+        return 'get$cleanPath';
+      case 'post':
+        return 'create$cleanPath';
+      case 'put':
+        return 'update$cleanPath';
+      case 'delete':
+        return 'delete$cleanPath';
+      default:
+        return '${method.toLowerCase()}$cleanPath';
+    }
+  }
 
-//       final json = content['application/json'];
-//       if (json == null) continue;
+  String _extractReturnType(
+    Map<String, dynamic> details,
+    String path,
+    Set<String> imports,
+  ) {
+    final responses = details['responses'] as Map<String, dynamic>?;
+    final ok = responses?['200'] ?? responses?['201'] ?? responses?['202'];
 
-//       final schema = json['schema'];
-//       if (schema == null) continue;
+    if (ok == null) return 'void';
 
-//       if (schema['\$ref'] != null) {
-//         return schema['\$ref'].toString().split('/').last;
-//       }
-//     }
+    final schema = ok['content']?['application/json']?['schema'];
 
-//     return null;
-//   }
-// }
+    if (schema == null) return 'Unit';
 
-// class _RepoMethod {
-//   final String name;
-//   final String returnType;
+    if (schema['\$ref'] != null) {
+      final model = schema['\$ref'].split('/').last;
+      imports.add(model);
+      return model;
+    }
 
-//   _RepoMethod({required this.name, required this.returnType});
-// }
+    if (schema['type'] == 'array' && schema['items']?['\$ref'] != null) {
+      final model = schema['items']['\$ref'].split('/').last;
+      imports.add(model);
+      return 'List<$model>';
+    }
+
+    if (schema['type'] != null) {
+      return mapType(schema);
+    }
+
+    return 'dynamic';
+  }
+}
