@@ -1,269 +1,33 @@
 #!/usr/bin/env dart
 // ignore_for_file: avoid_print
 
-import 'dart:io';
-import 'package:swagen/parser/exception_generator.dart';
-import 'package:swagen/parser/failure_generator.dart';
-import 'package:swagen/parser/repository_generator.dart';
-import 'package:swagen/parser/repository_impl_generator.dart';
-import 'package:swagen/utils/group_by_tag.dart';
-import 'package:swagen/utils/string_case.dart';
-import 'package:yaml/yaml.dart';
-
-import 'package:swagen/parser/model_generator.dart';
-import 'package:swagen/parser/swagger_parser.dart';
-import 'package:swagen/parser/datasource_generator.dart';
-
-const String swagenVersion = '1.0.0';
-const String githubUrl = 'https://github.com/rifftyo/swagen';
-
-String getPackageName() {
-  final pubspec = File('pubspec.yaml');
-  if (!pubspec.existsSync()) {
-    throw Exception("❌ pubspec.yaml not found in project root");
-  }
-  final yaml = loadYaml(pubspec.readAsStringSync());
-  return yaml['name'] ?? 'unknown_package';
-}
+import 'package:swagen/commands/clean_architecture.dart';
+import 'package:swagen/commands/convert_command.dart';
+import 'package:swagen/commands/help_command.dart';
+import 'package:swagen/commands/version_command.dart';
 
 void main(List<String> args) {
   if (args.isEmpty || args.contains('help')) {
-    _printHelp();
+    runHelpCommand();
     return;
   }
 
   if (args.contains('--version') || args.contains('-v')) {
-    print('🚀 swagen version $swagenVersion');
-    print('🔗 $githubUrl');
+    runVersionCommand();
     return;
   }
 
-  if (args.first == 'convert') {
-    if (args.length < 2) {
-      print('❌ Please provide swagger file');
-      print('Example: swagen convert swagger.json');
-      return;
-    }
-
-    _convertSwagger(args.sublist(1));
+  if (args.contains('cleanarch')) {
+    generateCleanArchitectureFolders();
     return;
   }
 
-  print('❌ Unknown command');
-  _printHelp();
-}
-
-void _convertSwagger(List<String> args) {
-  final inputPath = args[0];
-
-  final packageIndex = args.indexOf('--package');
-  final packageName =
-      packageIndex != -1 ? args[packageIndex + 1] : getPackageName();
-
-  final parser = SwaggerParser.fromFile(inputPath);
-  final schemas = parser.getSchemas();
-  final paths = parser.getPaths();
-  final baseUrl = parser.getBaseUrl();
-
-  final inlineSchemas = parser.extractInlineResponseSchemas();
-  schemas.addAll(inlineSchemas);
-
-  final modelGenerator = ModelGenerator();
-  final datasourceGenerator = DatasourceGenerator(packageName);
-  final repositoryGenerator = RepositoryGenerator(packageName);
-  final repositoryImplGenerator = RepositoryImplGenerator(packageName);
-  final exceptionGenerator = ExceptionGenerator();
-  final failureGenerator = FailureGenerator();
-
-  // Generate RemoteDataSource
-  final datasourceOutputPath = 'lib/data/datasources';
-  Directory(datasourceOutputPath).createSync(recursive: true);
-
-  final datasourceCode = datasourceGenerator.generatorDataSource(
-    paths,
-    baseUrl,
-    schemas,
-    parser,
-  );
-
-  final usedModels = datasourceGenerator.usedImports;
-
-  // Generate Models
-  final modelOutputPath = 'lib/data/models';
-  Directory(modelOutputPath).createSync(recursive: true);
-
-  final generated = <String>{};
-
-  void generateRecursive(String name) {
-    if (generated.contains(name) || !schemas.containsKey(name)) return;
-    generated.add(name);
-
-    final schema = schemas[name]!;
-    final dartCode = modelGenerator.generateWithImports(name, schema);
-    final deps = modelGenerator.usedImports;
-
-    final file = File('$modelOutputPath/${name.toLowerCase()}.dart');
-    file.writeAsStringSync(dartCode);
-    print('✅ Generated Model: ${file.path}');
-
-    for (var dep in deps.toList()) {
-      generateRecursive(dep);
-    }
+  switch (args.first) {
+    case 'convert':
+      runConvertCommand(args.sublist(1));
+      break;
+    default:
+      print('❌ Unknown command');
+      runHelpCommand();
   }
-
-  for (var name in usedModels) {
-    generateRecursive(name);
-  }
-
-  // 3️⃣ Generate Exception & Failure
-  exceptionGenerator.generate('lib/common/exception.dart');
-  failureGenerator.generate('lib/common/failure.dart');
-
-  // 4️⃣ Write DataSource
-  final datasourceFile = File('$datasourceOutputPath/remote_data_source.dart');
-  datasourceFile.writeAsStringSync(datasourceCode);
-  print('✅ Generated RemoteDataSource: ${datasourceFile.path}');
-
-  // 5️⃣ Generate Repository
-  final repositoryOutputPath = 'lib/domain/repositories';
-  Directory(repositoryOutputPath).createSync(recursive: true);
-
-  final groupedPaths = groupPathsByTag(paths);
-
-  for (final entry in groupedPaths.entries) {
-    final tag = entry.key;
-    final tagPaths = entry.value;
-
-    final repositoryName =
-        tag == 'default' ? '${packageName}Repository' : '${tag}Repository';
-
-    final repositoryCode = repositoryGenerator.generateRepository(
-      repositoryName.replaceAll('Repository', ''),
-      tagPaths,
-      schemas,
-    );
-
-    final fileName = repositoryName.snakeCase;
-
-    final repositoryFile = File('$repositoryOutputPath/$fileName.dart');
-
-    repositoryFile.writeAsStringSync(repositoryCode);
-    print('✅ Generated Repository: ${repositoryFile.path}');
-  }
-
-  // 5️⃣ Generate Repository Implementation
-  final repositoryImplOutputPath = 'lib/data/repositories';
-  Directory(repositoryImplOutputPath).createSync(recursive: true);
-
-  for (final entry in groupedPaths.entries) {
-    final tag = entry.key;
-    final tagPaths = entry.value;
-
-    final repositoryName =
-        tag == 'default' ? '${packageName}Repository' : '${tag}Repository';
-
-    final repositoryCode = repositoryImplGenerator.generateRepositoryImpl(
-      repositoryName.replaceAll('Repository', ''),
-      tagPaths,
-      schemas,
-    );
-
-    final fileName = repositoryName.snakeCase;
-
-    final repositoryFile = File('$repositoryImplOutputPath/$fileName.dart');
-
-    repositoryFile.writeAsStringSync(repositoryCode);
-    print('✅ Generated Repository: ${repositoryFile.path}');
-  }
-
-  // 5️⃣ Format code
-  print('\n🎨 Formatting generated files...');
-  Process.runSync('dart', [
-    'format',
-    'lib/data',
-    'lib/domain',
-    'lib/common',
-  ], runInShell: true);
-  print('✅ Formatting completed');
-
-  // 6️⃣ Summary
-  print('\n🚀 Swagger converted successfully!');
-  print('📂 Output directories:');
-  print('   - lib/data/models');
-  print('   - lib/data/datasources');
-  print('   - lib/common');
-
-  // 7️⃣ Dependency install prompt
-  print('\n📦 Required dependencies:');
-  print('  - http');
-  print('  - flutter_secure_storage');
-  print('  - dartz');
-  print('  - equatable');
-
-  stdout.write(
-    '\n❓ Do you want to install dependencies automatically? (y/n): ',
-  );
-  final input = stdin.readLineSync()?.toLowerCase();
-
-  if (input == 'y' || input == 'yes') {
-    final flutterCmd = Platform.isWindows ? 'flutter.bat' : 'flutter';
-
-    try {
-      print('\n⚡ Installing dependencies...');
-      final result = Process.runSync(flutterCmd, [
-        'pub',
-        'add',
-        'http',
-        'dartz',
-        'equatable',
-        'flutter_secure_storage',
-      ], runInShell: true);
-
-      print(result.stdout);
-
-      if (result.stderr.toString().isNotEmpty) {
-        print('⚠️ Error: ${result.stderr}');
-      } else {
-        print('✅ Dependencies installed successfully!');
-      }
-    } catch (e) {
-      print('❌ Failed to install dependencies: $e');
-    }
-  } else {
-    print(
-      '\n👉 Skipping auto-install.\n'
-      'Run manually:\n'
-      'flutter pub add http dartz equatable flutter_secure_storage',
-    );
-  }
-}
-
-void _printHelp() {
-  print('''
-🚀 SWAGEN - Swagger to Flutter Generator
-
-USAGE:
-  swagen <command> [options]
-
-COMMANDS:
-  convert <swagger.json>   Convert swagger file to Flutter code
-  --version, -v            Show swagen version
-  help                     Show this help
-
-OPTIONS:
-  --package <name>         Custom package name
-
-EXAMPLES:
-  swagen convert swagger.json
-  swagen convert swagger.json --package my_app
-  swagen --version
-
-DOCUMENTATION:
-  📘 GitHub: $githubUrl
-  🧩 Example Swagger:
-  $githubUrl/tree/main/examples
-
-ISSUES & CONTRIBUTIONS:
-  $githubUrl/issues
-''');
 }

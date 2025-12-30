@@ -1,45 +1,51 @@
 import 'package:swagen/parser/swagger_parser.dart';
-import 'package:swagen/utils/camel_case_convert.dart';
+import 'package:swagen/utils/file_usage_detector.dart';
 import 'package:swagen/utils/map_type.dart';
+import 'package:swagen/utils/method_name_generator.dart';
+import 'package:swagen/utils/model_naming.dart';
 import 'package:swagen/utils/request_params.dart';
+import 'package:swagen/utils/resolve_component_parameter.dart';
+import 'package:swagen/utils/string_case.dart';
 
 class DatasourceGenerator {
   final Set<String> _imports = {};
+  final Map<String, Map<String, dynamic>> _inlineSchemas = {};
   final String projectName;
 
   Set<String> get usedImports => _imports;
+  Map<String, Map<String, dynamic>> get inlineSchemas => _inlineSchemas;
 
   DatasourceGenerator(this.projectName);
+
+  void resetImports() {
+    _imports.clear();
+  }
 
   String generatorDataSource(
     Map<String, dynamic> paths,
     String? baseUrl,
-    Map<String, dynamic> componentsSchemas,
+    Map<String, dynamic> components,
     SwaggerParser parser,
+    String featureName,
   ) {
     bool needsFile = false;
 
     paths.forEach((path, methods) {
       methods.forEach((_, details) {
-        if (_useFile(details, componentsSchemas, _imports)) {
+        if (useFile(details, components, _imports)) {
           needsFile = true;
         }
       });
     });
 
-    final abstractClass = _generateAbstractClass(paths, componentsSchemas);
-    final implClass = _generateImplClass(
-      paths,
-      baseUrl,
-      componentsSchemas,
-      parser,
-    );
-    final imports = _generateImports(needsFile);
+    final abstractClass = _generateAbstractClass(paths, components);
+    final implClass = _generateImplClass(paths, baseUrl, components, parser);
+    final imports = _generateImports(needsFile, featureName);
 
     return "$imports\n\n$abstractClass\n\n$implClass";
   }
 
-  String _generateImports(bool needsFile) {
+  String _generateImports(bool needsFile, String featureName) {
     final buffer = StringBuffer();
 
     buffer.writeln("import 'dart:convert';");
@@ -53,11 +59,11 @@ class DatasourceGenerator {
       "import 'package:flutter_secure_storage/flutter_secure_storage.dart';",
     );
     buffer.writeln();
-    buffer.writeln("import 'package:$projectName/common/exception.dart';");
+    buffer.writeln("import 'package:$projectName/core/error/exception.dart';");
     if (_imports.isNotEmpty) {
       for (var imp in _imports) {
         buffer.writeln(
-          "import 'package:$projectName/data/models/${imp.toLowerCase()}.dart';",
+          "import 'package:$projectName/features/$featureName/data/models/${imp.snakeCase}.dart';",
         );
       }
     }
@@ -67,30 +73,30 @@ class DatasourceGenerator {
 
   String _generateAbstractClass(
     Map<String, dynamic> paths,
-    Map<String, dynamic> componentsSchemas,
+    Map<String, dynamic> components,
   ) {
+    final schemas = components['schemas'];
+
     final buffer = StringBuffer();
 
     buffer.writeln("abstract class RemoteDataSource {");
 
     paths.forEach((path, methods) {
       methods.forEach((method, details) {
-        final funcName = _generateMethodName(
+        final funcName = generateMethodName(
           method,
           path,
           details['operationId'],
         );
         final returnType = _extractReturnType(details, path);
 
-        final params = (details['parameters'] as List?) ?? [];
+        final rawParams = (details['parameters'] as List?) ?? [];
+        final params = resolveParameters(rawParams, components);
+
         final pathParams = params.where((p) => p['in'] == 'path').toList();
         final queryParams = params.where((p) => p['in'] == 'query').toList();
 
-        final bodyParams = extractRequestParams(
-          details,
-          componentsSchemas,
-          _imports,
-        );
+        final bodyParams = extractRequestParams(details, schemas, _imports);
 
         final dartParams = [
           ...pathParams.map((p) {
@@ -122,9 +128,11 @@ class DatasourceGenerator {
   String _generateImplClass(
     Map<String, dynamic> paths,
     String? baseUrl,
-    Map<String, dynamic> componentsSchemas,
+    Map<String, dynamic> components,
     SwaggerParser parser,
   ) {
+    final schemas = components['schemas'] ?? {};
+
     final buffer = StringBuffer();
 
     buffer.writeln("class RemoteDataSourceImpl implements RemoteDataSource {");
@@ -179,7 +187,7 @@ class DatasourceGenerator {
     paths.forEach((path, methods) {
       methods.forEach((method, details) {
         final secured = parser.useSecurity(pathItem: methods, method: method);
-        final funcName = _generateMethodName(
+        final funcName = generateMethodName(
           method,
           path,
           details['operationId'],
@@ -187,16 +195,30 @@ class DatasourceGenerator {
         final returnType = _extractReturnType(details, path);
         final returnStatement = _generateReturnStatement(returnType);
 
-        final params = (details['parameters'] as List?) ?? [];
+        final rawParams = (details['parameters'] as List?) ?? [];
+        final params = resolveParameters(rawParams, components);
+
         final pathParams = params.where((p) => p['in'] == 'path').toList();
         final queryParams = params.where((p) => p['in'] == 'query').toList();
 
-        final bodyParams = extractRequestParams(
-          details,
-          componentsSchemas,
-          _imports,
-        );
+        final bodyParams = extractRequestParams(details, schemas, _imports);
+
         String? contentType;
+
+        final requestBody = details['requestBody'];
+        if (requestBody != null) {
+          final content = requestBody['content'];
+
+          if (content != null) {
+            if (content['multipart/form-data'] != null) {
+              contentType = 'multipart/form-data';
+            } else if (content['application/x-www-form-urlencoded'] != null) {
+              contentType = 'application/x-www-form-urlencoded';
+            } else if (content['application/json'] != null) {
+              contentType = 'application/json';
+            }
+          }
+        }
 
         final dartParams = [
           ...pathParams.map((p) {
@@ -225,10 +247,21 @@ class DatasourceGenerator {
           );
         }
 
-        final queryString =
+        final queryMap =
             queryParams.isNotEmpty
-                ? "?${queryParams.map((p) => "${p['name']}=\$${p['name']}").join("&")}"
-                : "";
+                ? '''
+    final uri = Uri.parse('\$BASE_URL$replacedPath').replace(
+      queryParameters: {
+        ${queryParams.map((p) {
+                  final name = p['name'];
+                  return "if ($name != null) '$name': $name.toString(),";
+                }).join('\n        ')}
+      },
+    );
+'''
+                : '''
+    final uri = Uri.parse('\$BASE_URL$replacedPath');
+''';
 
         if (contentType == 'multipart/form-data') {
           final fields =
@@ -249,7 +282,7 @@ class DatasourceGenerator {
           buffer.writeln('''
   @override
   Future<$returnType> $funcName($dartParams) async {
-    final uri = Uri.parse('\$BASE_URL$replacedPath$queryString');
+    $queryMap
     final request = http.MultipartRequest('${method.toUpperCase()}', uri);
     final headers = await _getHeaders(
       withAuth: $secured,
@@ -271,13 +304,16 @@ class DatasourceGenerator {
               files
                   .map(
                     (f) => '''
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        '$f',
-        $f.path,
-        filename: $f.path.split('/').last,
-      ),
-    );''',
+    if ($f != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          '$f',
+          $f.path,
+          filename: $f.path.split('/').last,
+        ),
+      );
+    }
+''',
                   )
                   .join('\n'),
             );
@@ -309,12 +345,14 @@ class DatasourceGenerator {
           buffer.writeln('''
   @override
   Future<$returnType> $funcName($dartParams) async {
+    $queryMap
     final response = await client.${method.toLowerCase()}(
-      Uri.parse('\$BASE_URL$replacedPath$queryString'),
+      uri,
       headers: await _getHeaders(
         withAuth: $secured,
-        ${contentType == 'application/x-www-form-urlencoded' ? 'isFormUrlEncoded: true,' : ''}),
-        ${bodyString.isNotEmpty ? 'body: $bodyString,' : ''}
+        ${contentType == 'application/x-www-form-urlencoded' ? 'isFormUrlEncoded: true,' : ''}
+      ),
+      ${bodyString.isNotEmpty ? 'body: $bodyString,' : ''}
     );
     $returnStatement
   }
@@ -385,35 +423,6 @@ class DatasourceGenerator {
 ''';
   }
 
-  String _generateMethodName(String method, String path, String? operationId) {
-    if (operationId != null && operationId.isNotEmpty) {
-      return camelCaseConvert(operationId);
-    }
-
-    var cleanPath =
-        path
-            .replaceAll(RegExp(r'\{|\}'), '')
-            .split('/')
-            .where((p) => p.isNotEmpty)
-            .map((p) => p[0].toUpperCase() + p.substring(1))
-            .join();
-
-    switch (method.toLowerCase()) {
-      case 'get':
-        return 'get$cleanPath';
-      case 'post':
-        return 'create$cleanPath';
-      case 'put':
-        return 'update$cleanPath';
-      case 'delete':
-        return 'delete$cleanPath';
-      case 'patch':
-        return 'patch$cleanPath';
-      default:
-        return '${method.toLowerCase()}$cleanPath';
-    }
-  }
-
   String _extractReturnType(Map<String, dynamic> details, [String? path]) {
     final responses = details['responses'] as Map<String, dynamic>?;
     final okResponse =
@@ -426,26 +435,19 @@ class DatasourceGenerator {
 
     final content = okResponse['content']?['application/json']?['schema'];
 
-    String capitalize(String s) =>
-        s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
-
-    String pluralToSingular(String name) =>
-        name.endsWith('s') ? name.substring(0, name.length - 1) : name;
-
     String buildBaseName(String? path) {
       if (path == null || path.isEmpty) return 'Generic';
 
-      final cleanPath = path
+      final cleanPath = path.capitalize
           .split('/')
           .where((segment) => segment.isNotEmpty && !segment.startsWith('{'))
-          .map(capitalize)
           .join('');
 
-      return cleanPath.isNotEmpty ? cleanPath : 'Generic';
+      return cleanPath.isNotEmpty ? cleanPath.pascalCase : 'Generic';
     }
 
     if (content == null) {
-      final baseName = buildBaseName(path);
+      final baseName = buildBaseName(path).pascalCase;
       final className = '${baseName}Response';
       _imports.add(className);
       return className;
@@ -453,21 +455,29 @@ class DatasourceGenerator {
 
     if (content['\$ref'] != null) {
       final ref = content['\$ref'].split('/').last;
-      _imports.add(ref);
-      return ref;
+      final responseName = asResponse(ref);
+      _imports.add(responseName);
+      return responseName;
     }
 
     if (content['type'] == 'array' && content['items']?['\$ref'] != null) {
       final ref = content['items']['\$ref'].split('/').last;
-      final wrapperName = '${pluralToSingular(ref)}ListResponse';
+      final wrapperName =
+          '${ref.toString().pascalCase.pluralToSingular}ListResponse';
       _imports.add(wrapperName);
       return wrapperName;
     }
 
     if (content['type'] == 'object' && content['properties'] != null) {
-      final baseName = buildBaseName(path);
+      final baseName = buildBaseName(path).pascalCase;
       final className = '${baseName}Response';
+
       _imports.add(className);
+
+      _inlineSchemas[className] = {
+        'type': 'object',
+        'properties': content['properties'],
+      };
       return className;
     }
 
@@ -486,26 +496,5 @@ class DatasourceGenerator {
     }
 
     return 'dynamic';
-  }
-
-  bool _useFile(
-    Map<String, dynamic> details,
-    Map<String, dynamic> componentsSchemas,
-    Set<String> imports,
-  ) {
-    bool usesFile = false;
-
-    final bodyParams = extractRequestParams(
-      details,
-      componentsSchemas,
-      imports,
-    );
-
-    for (final param in bodyParams) {
-      if (param.contains('File')) {
-        usesFile = true;
-      }
-    }
-    return usesFile;
   }
 }

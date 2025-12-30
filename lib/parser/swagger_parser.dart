@@ -1,5 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:http/http.dart' as http;
+
+import 'package:swagen/utils/string_case.dart';
+import 'package:yaml/yaml.dart';
 
 class SwaggerParser {
   final Map<String, dynamic> swagger;
@@ -8,7 +12,40 @@ class SwaggerParser {
 
   factory SwaggerParser.fromFile(String path) {
     final content = File(path).readAsStringSync();
+    if (path.endsWith('.yaml') || path.endsWith('.yml')) {
+      final yamlMap = loadYaml(content);
+      return SwaggerParser(_convertYamlToMap(yamlMap));
+    }
+
     return SwaggerParser(jsonDecode(content));
+  }
+
+  static Future<SwaggerParser> fromUrl(String url) async {
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Failed to load swagger from URL (${response.statusCode})',
+      );
+    }
+
+    return SwaggerParser(_parseContent(response.body, url));
+  }
+
+  static Map<String, dynamic> _parseContent(String content, String source) {
+    if (source.endsWith('.yaml') || source.endsWith('.yml')) {
+      return _convertYamlToMap(loadYaml(content));
+    }
+
+    if (content.trim().startsWith('{')) {
+      return jsonDecode(content);
+    }
+
+    return _convertYamlToMap(loadYaml(content));
+  }
+
+  Map<String, dynamic> getComponents() {
+    return swagger['components'] ?? {};
   }
 
   Map<String, dynamic> getSchemas() {
@@ -42,11 +79,14 @@ class SwaggerParser {
     final Map<String, dynamic> inlineSchemas = {};
 
     paths.forEach((path, methods) {
-      final cleanPath = path
-          .split('/')
-          .where((segment) => segment.isNotEmpty && !segment.startsWith('{'))
-          .map(_capitalize)
-          .join('');
+      final cleanPath =
+          path
+              .split('/')
+              .where(
+                (segment) => segment.isNotEmpty && !segment.startsWith('{'),
+              )
+              .join('')
+              .capitalize;
 
       final defaultModelName =
           cleanPath.isNotEmpty ? '${cleanPath}Response' : 'GenericResponse';
@@ -79,7 +119,8 @@ class SwaggerParser {
           } else if (schema['type'] == 'array' &&
               schema['items']?['\$ref'] != null) {
             final ref = schema['items']['\$ref'].split('/').last;
-            final listModelName = '${_pluralToSingular(ref)}ListResponse';
+            final listModelName =
+                '${ref.toString().pluralToSingular}ListResponse';
 
             inlineSchemas[listModelName] = {
               "type": "object",
@@ -115,15 +156,7 @@ class SwaggerParser {
     return inlineSchemas;
   }
 
-  String _capitalize(String s) {
-    if (s.isEmpty) return s;
-    return s[0].toUpperCase() + s.substring(1);
-  }
-
-  String _pluralToSingular(String name) {
-    if (name.endsWith('s')) {
-      return name.substring(0, name.length - 1);
-    }
-    return name;
+  static Map<String, dynamic> _convertYamlToMap(YamlMap yamlMap) {
+    return jsonDecode(jsonEncode(yamlMap));
   }
 }

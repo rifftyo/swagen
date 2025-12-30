@@ -33,4 +33,6 @@ build/
 lib/data
 lib/common
 lib/domain
+lib/core
+lib/features
 assets

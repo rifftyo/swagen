@@ -1,3 +1,5 @@
+import 'package:swagen/utils/string_map.dart';
+
 String mapType(Map<String, dynamic>? schema) {
   if (schema == null) return 'dynamic';
 
@@ -9,9 +11,14 @@ String mapType(Map<String, dynamic>? schema) {
 
   switch (type) {
     case 'string':
-      if (schema['format'] == 'date-time') return 'DateTime';
-      if (schema['format'] == 'binary') return 'File';
-      return 'String';
+      switch (schema['format']) {
+        case 'date-time':
+          return 'DateTime';
+        case 'binary':
+          return 'File';
+        default:
+          return 'String';
+      }
 
     case 'integer':
       return 'int';
@@ -23,12 +30,13 @@ String mapType(Map<String, dynamic>? schema) {
       return 'double';
 
     case 'array':
-      final items = schema['items'] as Map<String, dynamic>?;
+      final items = asStringMap(schema['items']);
       return 'List<${mapType(items)}>';
 
     case 'object':
       if (schema['additionalProperties'] != null) {
-        return 'Map<String, ${mapType(schema['additionalProperties'])}>';
+        final additional = asStringMap(schema['additionalProperties']);
+        return 'Map<String, ${mapType(additional)}>';
       }
       return 'Map<String, dynamic>';
 
