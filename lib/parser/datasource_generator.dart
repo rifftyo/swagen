@@ -172,16 +172,20 @@ class DatasourceGenerator {
   }
 ''');
     buffer.writeln('''
-  Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
-    final jsonMap = jsonDecode(response.body);
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return jsonMap;
-    } else {
-      final errorMessage = jsonMap['message'] ?? 'Unknown Error';
-      throw ServerException(errorMessage);
+    Future<dynamic> _handleResponse(http.Response response) async {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (response.body.isEmpty) {
+          return null;
+        }
+        return jsonDecode(response.body);
+      } else {
+        if (response.body.isNotEmpty) {
+          final jsonMap = jsonDecode(response.body);
+          throw ServerException(jsonMap['message'] ?? 'Unknown Error');
+        }
+        throw ServerException('Unknown Error');
+      }
     }
-  }
 ''');
     buffer.writeln();
     paths.forEach((path, methods) {
@@ -447,10 +451,7 @@ class DatasourceGenerator {
     }
 
     if (content == null) {
-      final baseName = buildBaseName(path).pascalCase;
-      final className = '${baseName}Response';
-      _imports.add(className);
-      return className;
+      return 'void';
     }
 
     if (content['\$ref'] != null) {
@@ -485,9 +486,17 @@ class DatasourceGenerator {
         content['additionalProperties'] != null) {
       final valueSchema =
           content['additionalProperties'] as Map<String, dynamic>;
+      final type = valueSchema['type'];
+
+      if (type == 'integer') {
+        return 'Map<String, int>';
+      } else if (type == 'string') {
+        return 'Map<String, String>';
+      } else if (type == 'boolean') {
+        return 'Map<String, bool>';
+      }
 
       final valueType = mapType(valueSchema['schema']);
-
       return 'Map<String, $valueType>';
     }
 

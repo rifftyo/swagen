@@ -1,3 +1,4 @@
+import 'package:swagen/utils/dartz_import_helper.dart';
 import 'package:swagen/utils/file_usage_detector.dart';
 import 'package:swagen/utils/method_name_generator.dart';
 import 'package:swagen/utils/parameter_generator.dart';
@@ -35,7 +36,7 @@ class RepositoryGenerator {
       buffer.writeln("import 'dart:io';");
     }
 
-    buffer.writeln("import 'package:dartz/dartz.dart';");
+    buffer.writeln(dartzImport(usedEntities));
     buffer.writeln("import 'package:$projectName/core/error/failure.dart';");
 
     for (final entity in usedEntities) {

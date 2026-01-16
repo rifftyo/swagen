@@ -1,4 +1,5 @@
 import 'package:swagen/parser/entitiy_generator.dart';
+import 'package:swagen/utils/dartz_import_helper.dart';
 import 'package:swagen/utils/method_name_generator.dart';
 import 'package:swagen/utils/parameter_generator.dart';
 import 'package:swagen/utils/repository_return_type.dart';
@@ -29,7 +30,7 @@ class RepositoryImplGenerator {
 
     buffer.writeln("import 'dart:io';");
 
-    buffer.writeln("import 'package:dartz/dartz.dart';");
+    buffer.writeln(dartzImport(imports));
     buffer.writeln("import 'package:$projectName/core/error/failure.dart';");
     buffer.writeln("import 'package:$projectName/core/error/exception.dart';");
     buffer.writeln(
@@ -93,27 +94,38 @@ class RepositoryImplGenerator {
           '  Future<Either<Failure, $returnType>> $funcName($params) async {',
         );
         buffer.writeln('    try {');
-        buffer.writeln(
-          '      final response = await remoteDataSource.$funcName($paramNames);',
-        );
-
-        if (isListResponse) {
-          if (paginated) {
-            buffer.writeln(
-              '      return right(response.data.map((e) => e.toEntity()).toList());',
-            );
-          } else {
-            buffer.writeln(
-              '      return right(response.items.map((e) => e.toEntity()).toList());',
-            );
-          }
-        } else if (_isPrimitive(returnType)) {
-          final ref = responseSchema['\$ref'].split('/').last;
-          final field = _getPrimaryField(ref, schemas);
-
-          buffer.writeln('      return right(response.$field);');
+        if (_isUnit(returnType)) {
+          buffer.writeln(
+            '      await remoteDataSource.$funcName($paramNames);',
+          );
+          buffer.writeln('      return const Right(unit);');
         } else {
-          buffer.writeln('      return right(response.toEntity());');
+          buffer.writeln(
+            '      final response = await remoteDataSource.$funcName($paramNames);',
+          );
+
+          if (isListResponse) {
+            if (paginated) {
+              buffer.writeln(
+                '      return right(response.data.map((e) => e.toEntity()).toList());',
+              );
+            } else {
+              buffer.writeln(
+                '      return right(response.items.map((e) => e.toEntity()).toList());',
+              );
+            }
+          } else if (_isPrimitive(returnType) ||
+              returnType.startsWith('Map<')) {
+            if (responseSchema['\$ref'] != null) {
+              final ref = responseSchema['\$ref'].split('/').last;
+              final field = _getPrimaryField(ref, schemas);
+              buffer.writeln('      return right(response.$field);');
+            } else {
+              buffer.writeln('      return right(response);');
+            }
+          } else {
+            buffer.writeln('      return right(response.toEntity());');
+          }
         }
 
         buffer.writeln('    } on ServerException catch (e) {');
@@ -137,6 +149,10 @@ class RepositoryImplGenerator {
 
   bool _isPrimitive(String type) {
     return ['String', 'int', 'double', 'bool'].contains(type);
+  }
+
+  bool _isUnit(String returnType) {
+    return returnType == 'Unit';
   }
 
   String _getPrimaryField(String schemaName, Map<String, dynamic> schemas) {

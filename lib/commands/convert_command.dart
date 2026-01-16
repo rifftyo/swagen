@@ -25,14 +25,21 @@ Future<void> runConvertCommand(List<String> args) async {
     return;
   }
 
+  final inputPath = args[0];
+
+  if (!inputPath.startsWith('http://') &&
+      !inputPath.startsWith('https://') &&
+      !File(inputPath).existsSync()) {
+    print('❌ File "$inputPath" not found. Please check the path.');
+    return;
+  }
+
   await installDependencies([
     'http',
     'equatable',
     'dartz',
     'flutter_secure_storage',
   ]);
-
-  final inputPath = args[0];
 
   final packageIndex = args.indexOf('--package');
   final packageName =
@@ -107,6 +114,13 @@ Future<void> runConvertCommand(List<String> args) async {
     generateDatasource(outputPath: datasourceDir, code: datasourceCode);
 
     schemas.addAll(datasourceGenerator.inlineSchemas);
+
+    for (var usedModel in datasourceGenerator.usedImports) {
+      final schemaKey = usedModel.replaceAll('Response', '');
+      if (schemas.containsKey(schemaKey)) {
+        schemas[usedModel] = schemas[schemaKey]!;
+      }
+    }
 
     // Generate models
     generateModels(

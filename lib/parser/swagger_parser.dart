@@ -49,7 +49,7 @@ class SwaggerParser {
   }
 
   Map<String, dynamic> getSchemas() {
-    return swagger['components']?['schemas'] ?? {};
+    return getComponents()['schemas'] ?? {};
   }
 
   Map<String, dynamic> getPaths() {
@@ -157,6 +157,20 @@ class SwaggerParser {
   }
 
   static Map<String, dynamic> _convertYamlToMap(YamlMap yamlMap) {
-    return jsonDecode(jsonEncode(yamlMap));
+    return _yamlToDart(yamlMap) as Map<String, dynamic>;
+  }
+
+  static dynamic _yamlToDart(dynamic yaml) {
+    if (yaml is YamlMap) {
+      return Map<String, dynamic>.fromEntries(
+        yaml.entries.map(
+          (e) => MapEntry(e.key.toString(), _yamlToDart(e.value)),
+        ),
+      );
+    }
+    if (yaml is YamlList) {
+      return yaml.map(_yamlToDart).toList();
+    }
+    return yaml;
   }
 }

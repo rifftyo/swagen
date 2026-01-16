@@ -1,39 +1,47 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# swagen
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
+`swagen` is a CLI tool to generate Flutter Clean Architecture code from Swagger / OpenAPI specifications.
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
+It helps Flutter developers quickly scaffold:
+- Remote data sources
+- Repositories
+- Models & entities
+- Failures & exceptions
 
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+based on OpenAPI 3.x documents.
+
+---
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+- 🚀 Generate Flutter Clean Architecture structure
+- 📄 OpenAPI 3.x / Swagger support
+- 🔐 Security & authorization detection
+- 📦 Supports:
+  - Path parameters
+  - Query parameters
+  - Request body
+  - Multipart form data (file upload)
+- 🧩 Generates:
+  - Datasource
+  - Repository
+  - Repository implementation
+  - Models & entities
+- 🛠 CLI-based tool
 
-## Getting started
+---
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+## Getting Started
 
-## Usage
+### Prerequisites
+- Dart SDK >= 3.0
+- Flutter project (recommended)
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+---
 
-```dart
-const like = 'sample';
-```
+## Installation
 
-## Additional information
+Activate `swagen` globally:
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+```bash
+dart pub global activate swagen
