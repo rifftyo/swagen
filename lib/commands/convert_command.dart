@@ -5,17 +5,23 @@ import 'package:swagen/parser/datasource_generator.dart';
 import 'package:swagen/parser/entitiy_generator.dart';
 import 'package:swagen/parser/exception_generator.dart';
 import 'package:swagen/parser/failure_generator.dart';
-import 'package:swagen/parser/mapper_generator.dart';
 import 'package:swagen/parser/model_generator.dart';
+import 'package:swagen/parser/provider_generator.dart';
 import 'package:swagen/parser/repository_generator.dart';
 import 'package:swagen/parser/repository_impl_generator.dart';
+import 'package:swagen/parser/state_generator.dart';
 import 'package:swagen/parser/swagger_parser.dart';
+import 'package:swagen/parser/usecase_generator.dart';
 import 'package:swagen/utils/code_formatter.dart';
 import 'package:swagen/utils/dependency_installer.dart';
 import 'package:swagen/utils/entity_helper.dart';
+import 'package:swagen/utils/file_usage_detector.dart';
 import 'package:swagen/utils/group_by_tag.dart';
+import 'package:swagen/utils/method_name_generator.dart';
 import 'package:swagen/utils/model_naming.dart';
 import 'package:swagen/utils/package_reader.dart';
+import 'package:swagen/utils/parameter_generator.dart';
+import 'package:swagen/utils/repository_return_type.dart';
 import 'package:swagen/utils/string_case.dart';
 
 Future<void> runConvertCommand(List<String> args) async {
@@ -60,11 +66,11 @@ Future<void> runConvertCommand(List<String> args) async {
 
   schemas.addAll(parser.extractInlineResponseSchemas());
 
-  final modelGenerator = ModelGenerator();
   final datasourceGenerator = DatasourceGenerator(packageName);
   final repositoryGenerator = RepositoryGenerator(packageName);
   final repositoryImplGenerator = RepositoryImplGenerator(packageName);
-  final mapperGenerator = MapperGenerator();
+  final useCaseGenerator = UseCaseGenerator(packageName);
+  final providerGenerator = ProviderGenerator(packageName);
 
   // Group paths by tag
   final groupedPaths = groupPathsByTag(paths);
@@ -73,6 +79,8 @@ Future<void> runConvertCommand(List<String> args) async {
   Directory('lib/core/error').createSync(recursive: true);
   ExceptionGenerator().generate('lib/core/error/exception.dart');
   FailureGenerator().generate('lib/core/error/failure.dart');
+  Directory('lib/core/state').createSync(recursive: true);
+  StateGenerator().generate('lib/core/state/request_state.dart');
 
   // Generate per feature
   for (final entry in groupedPaths.entries) {
@@ -93,7 +101,10 @@ Future<void> runConvertCommand(List<String> args) async {
     final domainDir = '$featureDir/domain';
     final entitiesDir = '$domainDir/entities';
     final domainRepoDir = '$domainDir/repositories';
-    final mapperDir = '$dataDir/mappers';
+    final usecaseDir = '$domainDir/usecases';
+    // Presentation Layer
+    final presentationDir = '$featureDir/presentation';
+    final providerDir = '$presentationDir/providers';
 
     // Create directories
     Directory(modelsDir).createSync(recursive: true);
@@ -101,7 +112,8 @@ Future<void> runConvertCommand(List<String> args) async {
     Directory(dataRepoDir).createSync(recursive: true);
     Directory(domainRepoDir).createSync(recursive: true);
     Directory(entitiesDir).createSync(recursive: true);
-    Directory(mapperDir).createSync(recursive: true);
+    Directory(usecaseDir).createSync(recursive: true);
+    Directory(providerDir).createSync(recursive: true);
 
     // Generate datasource
     final datasourceCode = datasourceGenerator.generatorDataSource(
@@ -122,14 +134,6 @@ Future<void> runConvertCommand(List<String> args) async {
       }
     }
 
-    // Generate models
-    generateModels(
-      usedModels: datasourceGenerator.usedImports,
-      schemas: schemas,
-      generator: modelGenerator,
-      outputPath: modelsDir,
-    );
-
     // Generate repositories
     generateRepositories(
       groupedPaths: {featureName: pathsForFeature},
@@ -142,21 +146,36 @@ Future<void> runConvertCommand(List<String> args) async {
       usedEntities: usedEntities,
     );
 
+    // Generate use cases
+    generateUseCases(
+      featureName: featureName,
+      pathsForFeature: pathsForFeature,
+      components: components,
+      usedEntities: usedEntities,
+      packageName: packageName,
+      usecaseDir: usecaseDir,
+      providerDir: providerDir,
+      useCaseGenerator: useCaseGenerator,
+      providerGenerator: providerGenerator,
+    );
+
     // Generate entities
-    generateEntities(
+    final entities = generateEntities(
       usedEntities: usedEntities,
       schemas: schemas,
       outputPath: entitiesDir,
     );
 
-    // Generate mappers
-    generateMappers(
-      usedEntities: usedEntities,
+    final modelGenerator = ModelGenerator(generatedEntities: entities);
+
+    // Generate models
+    generateModels(
+      usedModels: datasourceGenerator.usedImports,
       schemas: schemas,
+      generator: modelGenerator,
+      outputPath: modelsDir,
+      projetName: packageName,
       featureName: featureName,
-      packageName: packageName,
-      mapperDir: mapperDir,
-      mapperGenerator: mapperGenerator,
     );
   }
 
@@ -170,6 +189,8 @@ void generateModels({
   required Map<String, dynamic> schemas,
   required ModelGenerator generator,
   required String outputPath,
+  required String projetName,
+  required String featureName,
 }) {
   final generated = <String>{};
 
@@ -183,7 +204,12 @@ void generateModels({
 
     generated.add(modelName);
 
-    final code = generator.generateWithImports(modelName, schemas[schemaKey]!);
+    final code = generator.generateWithImports(
+      modelName,
+      schemas[schemaKey]!,
+      featureName,
+      projetName,
+    );
 
     File('$outputPath/${modelName.snakeCase}.dart').writeAsStringSync(code);
 
@@ -206,7 +232,7 @@ void generateDatasource({required String outputPath, required String code}) {
   print('✅ RemoteDataSource generated at $outputPath');
 }
 
-void generateEntities({
+Set<String> generateEntities({
   required Set<String> usedEntities,
   required Map<String, dynamic> schemas,
   required String outputPath,
@@ -216,7 +242,6 @@ void generateEntities({
 
   void generateRecursive(String entityName) {
     if (generated.contains(entityName)) return;
-    generated.add(entityName);
 
     final schemaKey = schemas.keys.firstWhere(
       (k) => resolveEntityName(k) == entityName,
@@ -227,7 +252,10 @@ void generateEntities({
 
     final schema = schemas[schemaKey]!;
 
+    // ⛔ FILTER DOMAIN ENTITY
     if (!isDomainEntity(schemaKey, schema)) return;
+
+    generated.add(entityName);
 
     final deps = resolveEntityDependencies(schemaKey, schemas, {});
     for (final dep in deps) {
@@ -243,6 +271,7 @@ void generateEntities({
   }
 
   print('✅ Entities generated at $outputPath');
+  return generated;
 }
 
 void generateRepositories({
@@ -285,57 +314,84 @@ void generateRepositories({
   print('✅ Repositories generated');
 }
 
-void generateMappers({
-  required Set<String> usedEntities,
-  required Map<String, dynamic> schemas,
+void generateUseCases({
   required String featureName,
+  required Map<String, dynamic> pathsForFeature,
+  required Map<String, dynamic> components,
+  required Set<String> usedEntities,
   required String packageName,
-  required String mapperDir,
-  required MapperGenerator mapperGenerator,
+  required String usecaseDir,
+  required String providerDir,
+  required UseCaseGenerator useCaseGenerator,
+  required ProviderGenerator providerGenerator,
 }) {
-  final generated = <String>{};
+  final repositoryClassName =
+      featureName == 'default'
+          ? packageName.pascalCase
+          : featureName.pascalCase;
 
-  void generateRecursive(String schemaName) {
-    final responseName = asResponse(schemaName);
+  final repositoryName = '${repositoryClassName}Repository';
 
-    if (generated.contains(responseName)) return;
-    if (!schemas.containsKey(schemaName)) return;
+  pathsForFeature.forEach((path, methods) {
+    methods.forEach((method, details) {
+      final methodName = generateMethodName(
+        method,
+        path,
+        details['operationId'],
+      );
 
-    generated.add(responseName);
+      final result = repositoryReturnTypeResult(
+        details,
+        components['schemas'] ?? {},
+      );
 
-    final schema = schemas[schemaName]!;
-    final props = schema['properties'] as Map<String, dynamic>? ?? {};
+      usedEntities.addAll(result.entities);
 
-    for (final value in props.values) {
-      if (value['\$ref'] != null) {
-        generateRecursive(value['\$ref'].split('/').last);
-      } else if (value['type'] == 'array' && value['items']?['\$ref'] != null) {
-        generateRecursive(value['items']['\$ref'].split('/').last);
-      }
-    }
+      final returnType = result.type;
 
-    final code = mapperGenerator.generateWithImports(
-      schemaName,
-      schema,
-      featureName,
-      packageName,
-    );
+      final paramResult = generateParameters(details, components);
+      usedEntities.addAll(paramResult.usedEntities);
 
-    File(
-      '$mapperDir/${responseName.snakeCase}_mapper.dart',
-    ).writeAsStringSync(code);
-  }
+      final paramsList =
+          paramResult.params.isEmpty
+              ? <String>[]
+              : paramResult.params.split(', ');
 
-  for (final entity in usedEntities) {
-    final schemaKey = schemas.keys.firstWhere(
-      (k) => resolveEntityName(k) == entity,
-      orElse: () => '',
-    );
+      final needsFile = useFile(details, components, usedEntities);
 
-    if (schemaKey.isNotEmpty) {
-      generateRecursive(schemaKey);
-    }
-  }
+      final usecaseCode = useCaseGenerator.generate(
+        featureName: featureName,
+        repositoryName: repositoryName,
+        methodName: methodName,
+        returnType: returnType,
+        parameters: paramsList,
+        usedEntities: usedEntities,
+        needsFile: needsFile,
+      );
 
-  print('✅ Mappers generated at $mapperDir');
+      final providerParams =
+          paramResult.params.isEmpty
+              ? <ProviderParam>[]
+              : paramResult.params.split(', ').map((p) {
+                final parts = p.split(' ');
+                return ProviderParam(type: parts[0], name: parts[1]);
+              }).toList();
+
+      final providerCode = providerGenerator.generate(
+        featureName: featureName,
+        usecaseName: methodName.pascalCase,
+        methodName: methodName,
+        params: providerParams,
+        returnType: returnType,
+      );
+
+      File(
+        '$providerDir/${methodName.snakeCase}_provider.dart',
+      ).writeAsStringSync(providerCode);
+
+      File(
+        '$usecaseDir/${methodName.snakeCase}.dart',
+      ).writeAsStringSync(usecaseCode);
+    });
+  });
 }

@@ -1,4 +1,3 @@
-import 'package:swagen/parser/entitiy_generator.dart';
 import 'package:swagen/utils/dartz_import_helper.dart';
 import 'package:swagen/utils/method_name_generator.dart';
 import 'package:swagen/utils/parameter_generator.dart';
@@ -10,6 +9,10 @@ class RepositoryImplGenerator {
 
   RepositoryImplGenerator(this.projectName);
 
+  bool isDartSdkType(String type) {
+    return type.contains(':') || type == 'File' || type == 'DateTime';
+  }
+
   String generateRepositoryImpl(
     String className,
     Map<String, dynamic> paths,
@@ -17,40 +20,38 @@ class RepositoryImplGenerator {
   ) {
     final buffer = StringBuffer();
 
-    final imports = <String>{};
+    final usedEntities = <String>{};
+    final schemas = components['schemas'] ?? {};
     final featureFolder = className.snakeCase;
-    final schemas = components['schemas'];
 
     paths.forEach((path, methods) {
       methods.forEach((_, details) {
-        repositoryReturnType(details, imports, schemas);
-        generateParameters(details, components, imports);
+        final result = repositoryReturnTypeResult(details, schemas);
+        usedEntities.addAll(result.entities);
+
+        final paramResult = generateParameters(details, components);
+        usedEntities.addAll(paramResult.usedEntities);
       });
     });
 
     buffer.writeln("import 'dart:io';");
-
-    buffer.writeln(dartzImport(imports));
+    buffer.writeln(dartzImport(usedEntities));
     buffer.writeln("import 'package:$projectName/core/error/failure.dart';");
     buffer.writeln("import 'package:$projectName/core/error/exception.dart';");
+
     buffer.writeln(
       "import 'package:$projectName/features/$featureFolder/data/datasources/remote_data_source.dart';",
     );
 
-    final repoFile = '${className.snakeCase}_repository.dart';
     buffer.writeln(
-      "import 'package:$projectName/features/$featureFolder/domain/repositories/$repoFile';",
+      "import 'package:$projectName/features/$featureFolder/domain/repositories/${className.snakeCase}_repository.dart';",
     );
 
-    for (final imp in imports) {
-      buffer.writeln(
-        "import 'package:$projectName/features/$featureFolder/domain/entities/${imp.snakeCase}.dart';",
-      );
-    }
+    for (final entity in usedEntities) {
+      if (isDartSdkType(entity)) continue;
 
-    for (final imp in imports) {
       buffer.writeln(
-        "import 'package:$projectName/features/$featureFolder/data/mappers/${imp.snakeCase}_response_mapper.dart';",
+        "import 'package:$projectName/features/$featureFolder/domain/entities/${entity.snakeCase}.dart';",
       );
     }
 
@@ -73,8 +74,10 @@ class RepositoryImplGenerator {
           details['operationId'],
         );
 
-        final returnType = repositoryReturnType(details, imports, schemas);
-        final params = generateParameters(details, components, imports);
+        final result = repositoryReturnTypeResult(details, schemas);
+
+        final paramResult = generateParameters(details, components);
+        final params = paramResult.params;
 
         final paramNames = params
             .split(',')
@@ -82,19 +85,14 @@ class RepositoryImplGenerator {
             .where((e) => e.isNotEmpty)
             .join(', ');
 
-        final isListResponse = _isListResponse(returnType);
-        final paginated = isPaginatedResponse(details);
-
-        final responseSchema =
-            details['responses']?['200']?['content']?['application/json']?['schema'];
-
         buffer.writeln();
         buffer.writeln('  @override');
         buffer.writeln(
-          '  Future<Either<Failure, $returnType>> $funcName($params) async {',
+          '  Future<Either<Failure, ${result.type}>> $funcName($params) async {',
         );
         buffer.writeln('    try {');
-        if (_isUnit(returnType)) {
+
+        if (result.type == 'Unit') {
           buffer.writeln(
             '      await remoteDataSource.$funcName($paramNames);',
           );
@@ -104,27 +102,25 @@ class RepositoryImplGenerator {
             '      final response = await remoteDataSource.$funcName($paramNames);',
           );
 
-          if (isListResponse) {
-            if (paginated) {
+          if (result.needsMapper) {
+            if (result.type.startsWith('List')) {
+              final listField = result.listField ?? 'items';
               buffer.writeln(
-                '      return right(response.data.map((e) => e.toEntity()).toList());',
+                '      return right(response.$listField.map((e) => e.toEntity()).toList());',
               );
-            } else {
-              buffer.writeln(
-                '      return right(response.items.map((e) => e.toEntity()).toList());',
-              );
-            }
-          } else if (_isPrimitive(returnType) ||
-              returnType.startsWith('Map<')) {
-            if (responseSchema['\$ref'] != null) {
-              final ref = responseSchema['\$ref'].split('/').last;
-              final field = _getPrimaryField(ref, schemas);
+            } else if ([
+              'String',
+              'int',
+              'double',
+              'bool',
+            ].contains(result.type)) {
+              final field = result.firstField ?? 'message';
               buffer.writeln('      return right(response.$field);');
             } else {
-              buffer.writeln('      return right(response);');
+              buffer.writeln('      return right(response.toEntity());');
             }
           } else {
-            buffer.writeln('      return right(response.toEntity());');
+            buffer.writeln('      return right(response);');
           }
         }
 
@@ -141,28 +137,5 @@ class RepositoryImplGenerator {
 
     buffer.writeln('}');
     return buffer.toString();
-  }
-
-  bool _isListResponse(String returnType) {
-    return returnType.startsWith('List');
-  }
-
-  bool _isPrimitive(String type) {
-    return ['String', 'int', 'double', 'bool'].contains(type);
-  }
-
-  bool _isUnit(String returnType) {
-    return returnType == 'Unit';
-  }
-
-  String _getPrimaryField(String schemaName, Map<String, dynamic> schemas) {
-    final schema = schemas[schemaName];
-    final props = schema?['properties'] as Map<String, dynamic>?;
-
-    if (props == null || props.isEmpty) {
-      throw Exception('Schema $schemaName has no properties');
-    }
-
-    return props.keys.first.camelCase;
   }
 }

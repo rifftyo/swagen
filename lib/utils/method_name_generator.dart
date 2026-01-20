@@ -2,16 +2,16 @@ import 'package:swagen/utils/string_case.dart';
 
 String generateMethodName(String method, String path, String? operationId) {
   if (operationId != null && operationId.isNotEmpty) {
-    return (operationId.camelCase);
+    return operationId.camelCase;
   }
 
   var cleanPath =
-      path
-          .replaceAll(RegExp(r'\{|\}'), '')
-          .split('/')
-          .where((p) => p.isNotEmpty)
-          .map((p) => p[0].toUpperCase() + p.substring(1))
-          .join();
+      path.split('/').where((p) => p.isNotEmpty).map((p) {
+        if (p.startsWith('{') && p.endsWith('}')) {
+          return 'By${p.substring(1, p.length - 1).pascalCase}';
+        }
+        return p.pascalCase;
+      }).join();
 
   switch (method.toLowerCase()) {
     case 'get':

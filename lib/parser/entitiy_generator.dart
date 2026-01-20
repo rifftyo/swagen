@@ -1,6 +1,5 @@
 import 'package:swagen/utils/map_type.dart';
 import 'package:swagen/utils/string_case.dart';
-import 'package:swagen/utils/string_map.dart';
 
 class EntityGenerator {
   String generateEntity(String name, Map<String, dynamic> schema) {
@@ -61,19 +60,4 @@ class EntityGenerator {
     buffer.writeln('}');
     return buffer.toString();
   }
-}
-
-bool isPaginatedResponse(Map<String, dynamic> details) {
-  final responses = asStringMap(details['responses']);
-  final ok = responses?['200'];
-  final content = asStringMap(ok?['content']);
-  final appJson = asStringMap(content?['application/json']);
-  final schema = asStringMap(appJson?['schema']);
-
-  if (schema?['type'] == 'object') {
-    final props = asStringMap(schema?['properties']);
-    return props?['data'] != null && props?['meta'] != null;
-  }
-
-  return false;
 }

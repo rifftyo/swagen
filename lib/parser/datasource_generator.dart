@@ -6,19 +6,25 @@ import 'package:swagen/utils/model_naming.dart';
 import 'package:swagen/utils/request_params.dart';
 import 'package:swagen/utils/resolve_component_parameter.dart';
 import 'package:swagen/utils/string_case.dart';
+import 'package:swagen/utils/unique_params.dart';
 
 class DatasourceGenerator {
-  final Set<String> _imports = {};
   final Map<String, Map<String, dynamic>> _inlineSchemas = {};
   final String projectName;
+  final Set<String> _usedModels = {};
+  final Set<String> _collectedModels = {};
 
-  Set<String> get usedImports => _imports;
+  Set<String> get usedImports => _usedModels;
   Map<String, Map<String, dynamic>> get inlineSchemas => _inlineSchemas;
 
   DatasourceGenerator(this.projectName);
 
   void resetImports() {
-    _imports.clear();
+    _usedModels.clear();
+  }
+
+  bool isSdkImport(String name) {
+    return name.contains(':');
   }
 
   String generatorDataSource(
@@ -32,7 +38,7 @@ class DatasourceGenerator {
 
     paths.forEach((path, methods) {
       methods.forEach((_, details) {
-        if (useFile(details, components, _imports)) {
+        if (useFile(details, components, _usedModels)) {
           needsFile = true;
         }
       });
@@ -48,6 +54,10 @@ class DatasourceGenerator {
   String _generateImports(bool needsFile, String featureName) {
     final buffer = StringBuffer();
 
+    buffer.writeln("// ignore_for_file: constant_identifier_names");
+
+    buffer.writeln();
+
     buffer.writeln("import 'dart:convert';");
 
     if (needsFile) {
@@ -60,11 +70,20 @@ class DatasourceGenerator {
     );
     buffer.writeln();
     buffer.writeln("import 'package:$projectName/core/error/exception.dart';");
-    if (_imports.isNotEmpty) {
-      for (var imp in _imports) {
-        buffer.writeln(
-          "import 'package:$projectName/features/$featureName/data/models/${imp.snakeCase}.dart';",
-        );
+
+    if (_usedModels.isNotEmpty) {
+      for (var model in _usedModels) {
+        if (isSdkImport(model)) continue; // ✅ FIX
+
+        if (_collectedModels.contains(model)) {
+          buffer.writeln(
+            "import 'package:$projectName/features/$featureName/domain/entities/${model.snakeCase}.dart';",
+          );
+        } else {
+          buffer.writeln(
+            "import 'package:$projectName/features/$featureName/data/models/${model.snakeCase}.dart';",
+          );
+        }
       }
     }
 
@@ -76,8 +95,9 @@ class DatasourceGenerator {
     Map<String, dynamic> components,
   ) {
     final schemas = components['schemas'];
-
     final buffer = StringBuffer();
+    final List<String> methodSignatures = [];
+    final List<String> returnTypes = [];
 
     buffer.writeln("abstract class RemoteDataSource {");
 
@@ -89,39 +109,62 @@ class DatasourceGenerator {
           details['operationId'],
         );
         final returnType = _extractReturnType(details, path);
+        returnTypes.add(returnType);
 
         final rawParams = (details['parameters'] as List?) ?? [];
         final params = resolveParameters(rawParams, components);
 
         final pathParams = params.where((p) => p['in'] == 'path').toList();
         final queryParams = params.where((p) => p['in'] == 'query').toList();
+        final bodyParams = extractRequestParams(
+          details,
+          schemas,
+          _collectedModels,
+        );
 
-        final bodyParams = extractRequestParams(details, schemas, _imports);
+        final usedNames = <String>{};
 
         final dartParams = [
           ...pathParams.map((p) {
             final schema = p['schema'] as Map<String, dynamic>?;
             final type = mapType(schema);
-            final name = p['name'];
+            final name = makeUniqueParamName(p['name'], usedNames);
             return "$type $name";
           }),
           ...queryParams.map((p) {
             final schema = p['schema'] as Map<String, dynamic>?;
             final type = mapType(schema);
-            final name = p['name'];
             final isRequired = p['required'] == true;
-
+            final name = makeUniqueParamName(p['name'], usedNames);
             return isRequired ? "$type $name" : "$type? $name";
           }),
-          ...bodyParams,
+          ...bodyParams.map((p) {
+            final paramName = p.split(' ').last.replaceAll('?', '');
+            final uniqueName = makeUniqueParamName(paramName, usedNames);
+            return p.replaceFirst(paramName, uniqueName);
+          }),
         ].join(", ");
 
+        methodSignatures.add(dartParams);
         buffer.writeln("  Future<$returnType> $funcName($dartParams);");
       });
     });
 
-    buffer.writeln("}");
+    final Set<String> actuallyUsedModels = {};
+    for (final model in _collectedModels) {
+      final regex = RegExp(r'\b' + model + r'\b');
+      final usedInParams = methodSignatures.any((sig) => regex.hasMatch(sig));
+      final usedInReturn = returnTypes.any((ret) => regex.hasMatch(ret));
 
+      if (usedInParams || usedInReturn) {
+        actuallyUsedModels.add(model);
+      }
+    }
+
+    _usedModels.clear();
+    _usedModels.addAll(actuallyUsedModels);
+
+    buffer.writeln("}");
     return buffer.toString();
   }
 
@@ -205,7 +248,7 @@ class DatasourceGenerator {
         final pathParams = params.where((p) => p['in'] == 'path').toList();
         final queryParams = params.where((p) => p['in'] == 'query').toList();
 
-        final bodyParams = extractRequestParams(details, schemas, _imports);
+        final bodyParams = extractRequestParams(details, schemas, _usedModels);
 
         String? contentType;
 
@@ -224,23 +267,27 @@ class DatasourceGenerator {
           }
         }
 
+        final usedNames = <String>{};
+
         final dartParams = [
           ...pathParams.map((p) {
             final schema = p['schema'] as Map<String, dynamic>?;
             final type = mapType(schema);
-            final name = p['name'];
+            final name = makeUniqueParamName(p['name'], usedNames);
             return "$type $name";
           }),
           ...queryParams.map((p) {
             final schema = p['schema'] as Map<String, dynamic>?;
             final type = mapType(schema);
-            final name = p['name'];
             final isRequired = p['required'] == true;
-
+            final name = makeUniqueParamName(p['name'], usedNames);
             return isRequired ? "$type $name" : "$type? $name";
           }),
-
-          ...bodyParams,
+          ...bodyParams.map((p) {
+            final paramName = p.split(' ').last.replaceAll('?', '');
+            final uniqueName = makeUniqueParamName(paramName, usedNames);
+            return p.replaceFirst(paramName, uniqueName);
+          }),
         ].join(", ");
 
         String replacedPath = path;
@@ -331,7 +378,23 @@ class DatasourceGenerator {
 ''');
         } else {
           String bodyString = '';
-          if (bodyParams.isNotEmpty) {
+          bool isSchemaObjectBody = false;
+
+          // 🔥 DETEKSI BODY MODEL
+          if (bodyParams.length == 1) {
+            final param = bodyParams.first;
+            final type = param.split(' ').first;
+
+            // Jika tipe adalah MODEL, ubah entity -> Response -> JSON
+            if (_usedModels.contains(type)) {
+              isSchemaObjectBody = true;
+              final name = param.split(' ').last.replaceAll('?', '');
+              bodyString =
+                  "jsonEncode(${type}Response.fromEntity($name).toJson())";
+            }
+          }
+
+          if (!isSchemaObjectBody && bodyParams.isNotEmpty) {
             final bodyMap = bodyParams
                 .map((bp) {
                   final paramName = bp.split(' ').last.replaceAll('?', '');
@@ -457,7 +520,7 @@ class DatasourceGenerator {
     if (content['\$ref'] != null) {
       final ref = content['\$ref'].split('/').last;
       final responseName = asResponse(ref);
-      _imports.add(responseName);
+      _usedModels.add(responseName);
       return responseName;
     }
 
@@ -465,7 +528,7 @@ class DatasourceGenerator {
       final ref = content['items']['\$ref'].split('/').last;
       final wrapperName =
           '${ref.toString().pascalCase.pluralToSingular}ListResponse';
-      _imports.add(wrapperName);
+      _usedModels.add(wrapperName);
       return wrapperName;
     }
 
@@ -473,7 +536,7 @@ class DatasourceGenerator {
       final baseName = buildBaseName(path).pascalCase;
       final className = '${baseName}Response';
 
-      _imports.add(className);
+      _usedModels.add(className);
 
       _inlineSchemas[className] = {
         'type': 'object',

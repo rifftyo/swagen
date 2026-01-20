@@ -5,17 +5,31 @@ import 'dart:io';
 Future<void> formatGeneratedCode() async {
   print('🎨 Formatting generated code...');
 
-  final result = await Process.run('dart', [
+  final formatResult = await Process.run('dart', [
     'format',
     'lib/features',
     'lib/core',
   ], runInShell: true);
 
-  if (result.exitCode != 0) {
-    stderr.write(result.stderr);
+  if (formatResult.exitCode != 0) {
+    stderr.write(formatResult.stderr);
     throw Exception('Failed to format code');
   }
 
-  stdout.write(result.stdout);
-  print('✅ Code formatted successfully\n');
+  stdout.write(formatResult.stdout);
+  print('✅ Code formatted successfully');
+
+  print('🛠 Applying dart fixes...');
+  final fixResult = await Process.run('dart', [
+    'fix',
+    '--apply',
+  ], runInShell: true);
+
+  if (fixResult.exitCode != 0) {
+    stderr.write(fixResult.stderr);
+    throw Exception('Failed to apply dart fixes');
+  }
+
+  stdout.write(fixResult.stdout);
+  print('✅ Dart fixes applied successfully\n');
 }

@@ -11,6 +11,7 @@ USAGE:
 
 COMMANDS:
   convert <swagger.json>   Convert swagger file to Flutter code
+  cleanarch                Generate clean architecture folder structure
   --version, -v            Show swagen version
   help                     Show this help
 

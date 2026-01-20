@@ -1,15 +1,21 @@
 extension StringCaseExtension on String {
+  String get lowerCamelCase {
+    if (isEmpty) return this;
+    return pascalCase[0].toLowerCase() + pascalCase.substring(1);
+  }
+
   String get snakeCase {
     return replaceAllMapped(
-      RegExp(r'[A-Z]'),
-      (match) => '_${match.group(0)!.toLowerCase()}',
-    ).replaceFirst('_', '');
+      RegExp(r'([a-z0-9])([A-Z])'),
+      (m) => '${m.group(1)}_${m.group(2)!.toLowerCase()}',
+    ).replaceAll(RegExp(r'[\s\-]+'), '_').toLowerCase();
   }
 
   String get pascalCase {
-    return split(RegExp(r'[_\-\s]+'))
-        .where((word) => word.isNotEmpty)
-        .map((word) => word[0].toUpperCase() + word.substring(1).toLowerCase())
+    final words = snakeCase.split('_');
+    return words
+        .where((w) => w.isNotEmpty)
+        .map((w) => w[0].toUpperCase() + w.substring(1))
         .join();
   }
 

@@ -17,30 +17,57 @@ class RepositoryGenerator {
   ) {
     final buffer = StringBuffer();
 
-    bool needsFile = false;
-    final Set<String> usedEntities = {};
     final schemas = components['schemas'] ?? {};
 
-    paths.forEach((path, methods) {
-      methods.forEach((_, details) {
-        repositoryReturnType(details, usedEntities, schemas);
-        generateParameters(details, components, usedEntities);
+    bool needsFile = false;
 
-        if (useFile(details, components, usedEntities)) {
+    final Set<String> collectedEntities = {};
+
+    final List<String> methodSignatures = [];
+    final List<String> returnTypes = [];
+
+    paths.forEach((path, methods) {
+      methods.forEach((method, details) {
+        // return type
+        final result = repositoryReturnTypeResult(details, schemas, );
+        collectedEntities.addAll(result.entities);
+        returnTypes.add(result.type);
+
+        // parameters
+        final paramResult = generateParameters(details, components);
+        collectedEntities.addAll(paramResult.usedEntities);
+        methodSignatures.add(paramResult.params);
+
+        // file usage
+        if (useFile(details, components, collectedEntities)) {
           needsFile = true;
         }
       });
     });
 
+    final Set<String> actuallyUsedEntities = {};
+
+    for (final entity in collectedEntities) {
+      final regex = RegExp(r'\b' + entity + r'\b');
+
+      final usedInParams = methodSignatures.any((sig) => regex.hasMatch(sig));
+      final usedInReturn = returnTypes.any((ret) => regex.hasMatch(ret));
+
+      if (usedInParams || usedInReturn) {
+        actuallyUsedEntities.add(entity);
+      }
+    }
+
     if (needsFile) {
       buffer.writeln("import 'dart:io';");
     }
 
-    buffer.writeln(dartzImport(usedEntities));
+    buffer.writeln(dartzImport(actuallyUsedEntities));
     buffer.writeln("import 'package:$projectName/core/error/failure.dart';");
 
-    for (final entity in usedEntities) {
-      final featureFolder = className.snakeCase;
+    final featureFolder = className.snakeCase;
+
+    for (final entity in actuallyUsedEntities) {
       buffer.writeln(
         "import 'package:$projectName/features/$featureFolder/domain/entities/${entity.snakeCase}.dart';",
       );
@@ -57,17 +84,19 @@ class RepositoryGenerator {
           details['operationId'],
         );
 
-        final returnType = repositoryReturnType(details, usedEntities, schemas);
-        final params = generateParameters(details, components, usedEntities);
+        final result = repositoryReturnTypeResult(details, schemas);
+        final paramResult = generateParameters(details, components);
 
         buffer.writeln(
-          '  Future<Either<Failure, $returnType>> $funcName($params);',
+          '  Future<Either<Failure, ${result.type}>> '
+          '$funcName(${paramResult.params});',
         );
       });
     });
 
     buffer.writeln('}');
-    return RepositoryGenerateResult(buffer.toString(), usedEntities);
+
+    return RepositoryGenerateResult(buffer.toString(), actuallyUsedEntities);
   }
 }
 

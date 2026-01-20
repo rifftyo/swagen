@@ -22,7 +22,6 @@ String mapType(Map<String, dynamic>? schema) {
 
     case 'integer':
       return 'int';
-
     case 'boolean':
       return 'bool';
 
