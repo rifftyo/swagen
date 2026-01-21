@@ -40,23 +40,6 @@ dart run swagen convert path/to/swagger.json
 dart run swagen convert https://example.com/swagger.json
 ```
 
-### Global Installation (System-Wide)
-
-Install Swagen in your Flutter project:
-
-```bash
-dart pub global activate swagen
-```
-Run the generator using dart run:
-#### Convert a local Swagger file
-```bash
-swagen convert path/to/swagger.json
-```
-#### Convert from a URL
-```bash
-swagen convert https://example.com/swagger.json
-```
-
 ## Features
 
 ### 1. Auto-generated Clean Architecture Layers
@@ -152,104 +135,106 @@ dart run swagen version
 After running Swagen, your Flutter project will have a clean architecture structure like this:
 
 ```bash
-📦core
- ┣ 📂error
- ┃ ┣ 📜exception.dart
- ┃ ┗ 📜failure.dart
- ┗ 📂state
- ┃ ┗ 📜request_state.dart
-📦features
- ┣ 📂pet
- ┃ ┣ 📂data
- ┃ ┃ ┣ 📂datasources
- ┃ ┃ ┃ ┗ 📜remote_data_source.dart
- ┃ ┃ ┣ 📂models
- ┃ ┃ ┃ ┣ 📜api_response.dart
- ┃ ┃ ┃ ┣ 📜category_response.dart
- ┃ ┃ ┃ ┣ 📜pet_list_response.dart
- ┃ ┃ ┃ ┣ 📜pet_response.dart
- ┃ ┃ ┃ ┗ 📜tag_response.dart
- ┃ ┃ ┗ 📂repositories
- ┃ ┃ ┃ ┗ 📜pet_repository.dart
- ┃ ┣ 📂domain
- ┃ ┃ ┣ 📂entities
- ┃ ┃ ┃ ┣ 📜api.dart
- ┃ ┃ ┃ ┣ 📜category.dart
- ┃ ┃ ┃ ┣ 📜pet.dart
- ┃ ┃ ┃ ┗ 📜tag.dart
- ┃ ┃ ┣ 📂repositories
- ┃ ┃ ┃ ┗ 📜pet_repository.dart
- ┃ ┃ ┗ 📂usecases
- ┃ ┃ ┃ ┣ 📜add_pet.dart
- ┃ ┃ ┃ ┣ 📜delete_pet.dart
- ┃ ┃ ┃ ┣ 📜find_pets_by_status.dart
- ┃ ┃ ┃ ┣ 📜find_pets_by_tags.dart
- ┃ ┃ ┃ ┣ 📜get_pet_by_id.dart
- ┃ ┃ ┃ ┣ 📜update_pet.dart
- ┃ ┃ ┃ ┣ 📜update_pet_with_form.dart
- ┃ ┃ ┃ ┗ 📜upload_file.dart
- ┃ ┗ 📂presentation
- ┃ ┃ ┗ 📂providers
- ┃ ┃ ┃ ┣ 📜add_pet_provider.dart
- ┃ ┃ ┃ ┣ 📜delete_pet_provider.dart
- ┃ ┃ ┃ ┣ 📜find_pets_by_status_provider.dart
- ┃ ┃ ┃ ┣ 📜find_pets_by_tags_provider.dart
- ┃ ┃ ┃ ┣ 📜get_pet_by_id_provider.dart
- ┃ ┃ ┃ ┣ 📜update_pet_provider.dart
- ┃ ┃ ┃ ┣ 📜update_pet_with_form_provider.dart
- ┃ ┃ ┃ ┗ 📜upload_file_provider.dart
- ┣ 📂store
- ┃ ┣ 📂data
- ┃ ┃ ┣ 📂datasources
- ┃ ┃ ┃ ┗ 📜remote_data_source.dart
- ┃ ┃ ┣ 📂models
- ┃ ┃ ┃ ┗ 📜order_response.dart
- ┃ ┃ ┗ 📂repositories
- ┃ ┃ ┃ ┗ 📜store_repository.dart
- ┃ ┣ 📂domain
- ┃ ┃ ┣ 📂entities
- ┃ ┃ ┃ ┗ 📜order.dart
- ┃ ┃ ┣ 📂repositories
- ┃ ┃ ┃ ┗ 📜store_repository.dart
- ┃ ┃ ┗ 📂usecases
- ┃ ┃ ┃ ┣ 📜delete_order.dart
- ┃ ┃ ┃ ┣ 📜get_inventory.dart
- ┃ ┃ ┃ ┣ 📜get_order_by_id.dart
- ┃ ┃ ┃ ┗ 📜place_order.dart
- ┃ ┗ 📂presentation
- ┃ ┃ ┗ 📂providers
- ┃ ┃ ┃ ┣ 📜delete_order_provider.dart
- ┃ ┃ ┃ ┣ 📜get_inventory_provider.dart
- ┃ ┃ ┃ ┣ 📜get_order_by_id_provider.dart
- ┃ ┃ ┃ ┗ 📜place_order_provider.dart
- ┗ 📂user
- ┃ ┣ 📂data
- ┃ ┃ ┣ 📂datasources
- ┃ ┃ ┃ ┗ 📜remote_data_source.dart
- ┃ ┃ ┣ 📂models
- ┃ ┃ ┃ ┗ 📜user_response.dart
- ┃ ┃ ┗ 📂repositories
- ┃ ┃ ┃ ┗ 📜user_repository.dart
- ┃ ┣ 📂domain
- ┃ ┃ ┣ 📂entities
- ┃ ┃ ┃ ┗ 📜user.dart
- ┃ ┃ ┣ 📂repositories
- ┃ ┃ ┃ ┗ 📜user_repository.dart
- ┃ ┃ ┗ 📂usecases
- ┃ ┃ ┃ ┣ 📜create_user.dart
- ┃ ┃ ┃ ┣ 📜create_users_with_list_input.dart
- ┃ ┃ ┃ ┣ 📜delete_user.dart
- ┃ ┃ ┃ ┣ 📜get_user_by_name.dart
- ┃ ┃ ┃ ┣ 📜login_user.dart
- ┃ ┃ ┃ ┣ 📜logout_user.dart
- ┃ ┃ ┃ ┗ 📜update_user.dart
- ┃ ┗ 📂presentation
- ┃ ┃ ┗ 📂providers
- ┃ ┃ ┃ ┣ 📜create_users_with_list_input_provider.dart
- ┃ ┃ ┃ ┣ 📜create_user_provider.dart
- ┃ ┃ ┃ ┣ 📜delete_user_provider.dart
- ┃ ┃ ┃ ┣ 📜get_user_by_name_provider.dart
- ┃ ┃ ┃ ┣ 📜login_user_provider.dart
- ┃ ┃ ┃ ┣ 📜logout_user_provider.dart
- ┃ ┃ ┃ ┗ 📜update_user_provider.dart
+📦lib
+ ┣ 📂core
+ ┃ ┣ 📂error
+ ┃ ┃ ┣ 📜exception.dart
+ ┃ ┃ ┗ 📜failure.dart
+ ┃ ┗ 📂state
+ ┃ ┃ ┗ 📜request_state.dart
+ ┣ 📂features
+ ┃ ┣ 📂pet
+ ┃ ┃ ┣ 📂data
+ ┃ ┃ ┃ ┣ 📂datasources
+ ┃ ┃ ┃ ┃ ┗ 📜pet_remote_data_source.dart
+ ┃ ┃ ┃ ┣ 📂models
+ ┃ ┃ ┃ ┃ ┣ 📜api_response.dart
+ ┃ ┃ ┃ ┃ ┣ 📜category_response.dart
+ ┃ ┃ ┃ ┃ ┣ 📜pet_list_response.dart
+ ┃ ┃ ┃ ┃ ┣ 📜pet_response.dart
+ ┃ ┃ ┃ ┃ ┗ 📜tag_response.dart
+ ┃ ┃ ┃ ┗ 📂repositories
+ ┃ ┃ ┃ ┃ ┗ 📜pet_repository.dart
+ ┃ ┃ ┣ 📂domain
+ ┃ ┃ ┃ ┣ 📂entities
+ ┃ ┃ ┃ ┃ ┣ 📜api.dart
+ ┃ ┃ ┃ ┃ ┣ 📜category.dart
+ ┃ ┃ ┃ ┃ ┣ 📜pet.dart
+ ┃ ┃ ┃ ┃ ┗ 📜tag.dart
+ ┃ ┃ ┃ ┣ 📂repositories
+ ┃ ┃ ┃ ┃ ┗ 📜pet_repository.dart
+ ┃ ┃ ┃ ┗ 📂usecases
+ ┃ ┃ ┃ ┃ ┣ 📜add_pet.dart
+ ┃ ┃ ┃ ┃ ┣ 📜delete_pet.dart
+ ┃ ┃ ┃ ┃ ┣ 📜find_pets_by_status.dart
+ ┃ ┃ ┃ ┃ ┣ 📜find_pets_by_tags.dart
+ ┃ ┃ ┃ ┃ ┣ 📜get_pet_by_id.dart
+ ┃ ┃ ┃ ┃ ┣ 📜update_pet.dart
+ ┃ ┃ ┃ ┃ ┣ 📜update_pet_with_form.dart
+ ┃ ┃ ┃ ┃ ┗ 📜upload_file.dart
+ ┃ ┃ ┗ 📂presentation
+ ┃ ┃ ┃ ┗ 📂providers
+ ┃ ┃ ┃ ┃ ┣ 📜add_pet_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜delete_pet_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜find_pets_by_status_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜find_pets_by_tags_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜get_pet_by_id_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜update_pet_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜update_pet_with_form_provider.dart
+ ┃ ┃ ┃ ┃ ┗ 📜upload_file_provider.dart
+ ┃ ┣ 📂store
+ ┃ ┃ ┣ 📂data
+ ┃ ┃ ┃ ┣ 📂datasources
+ ┃ ┃ ┃ ┃ ┗ 📜store_remote_data_source.dart
+ ┃ ┃ ┃ ┣ 📂models
+ ┃ ┃ ┃ ┃ ┗ 📜order_response.dart
+ ┃ ┃ ┃ ┗ 📂repositories
+ ┃ ┃ ┃ ┃ ┗ 📜store_repository.dart
+ ┃ ┃ ┣ 📂domain
+ ┃ ┃ ┃ ┣ 📂entities
+ ┃ ┃ ┃ ┃ ┗ 📜order.dart
+ ┃ ┃ ┃ ┣ 📂repositories
+ ┃ ┃ ┃ ┃ ┗ 📜store_repository.dart
+ ┃ ┃ ┃ ┗ 📂usecases
+ ┃ ┃ ┃ ┃ ┣ 📜delete_order.dart
+ ┃ ┃ ┃ ┃ ┣ 📜get_inventory.dart
+ ┃ ┃ ┃ ┃ ┣ 📜get_order_by_id.dart
+ ┃ ┃ ┃ ┃ ┗ 📜place_order.dart
+ ┃ ┃ ┗ 📂presentation
+ ┃ ┃ ┃ ┗ 📂providers
+ ┃ ┃ ┃ ┃ ┣ 📜delete_order_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜get_inventory_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜get_order_by_id_provider.dart
+ ┃ ┃ ┃ ┃ ┗ 📜place_order_provider.dart
+ ┃ ┗ 📂user
+ ┃ ┃ ┣ 📂data
+ ┃ ┃ ┃ ┣ 📂datasources
+ ┃ ┃ ┃ ┃ ┗ 📜user_remote_data_source.dart
+ ┃ ┃ ┃ ┣ 📂models
+ ┃ ┃ ┃ ┃ ┗ 📜user_response.dart
+ ┃ ┃ ┃ ┗ 📂repositories
+ ┃ ┃ ┃ ┃ ┗ 📜user_repository.dart
+ ┃ ┃ ┣ 📂domain
+ ┃ ┃ ┃ ┣ 📂entities
+ ┃ ┃ ┃ ┃ ┗ 📜user.dart
+ ┃ ┃ ┃ ┣ 📂repositories
+ ┃ ┃ ┃ ┃ ┗ 📜user_repository.dart
+ ┃ ┃ ┃ ┗ 📂usecases
+ ┃ ┃ ┃ ┃ ┣ 📜create_user.dart
+ ┃ ┃ ┃ ┃ ┣ 📜create_users_with_list_input.dart
+ ┃ ┃ ┃ ┃ ┣ 📜delete_user.dart
+ ┃ ┃ ┃ ┃ ┣ 📜get_user_by_name.dart
+ ┃ ┃ ┃ ┃ ┣ 📜login_user.dart
+ ┃ ┃ ┃ ┃ ┣ 📜logout_user.dart
+ ┃ ┃ ┃ ┃ ┗ 📜update_user.dart
+ ┃ ┃ ┗ 📂presentation
+ ┃ ┃ ┃ ┗ 📂providers
+ ┃ ┃ ┃ ┃ ┣ 📜create_users_with_list_input_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜create_user_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜delete_user_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜get_user_by_name_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜login_user_provider.dart
+ ┃ ┃ ┃ ┃ ┣ 📜logout_user_provider.dart
+ ┃ ┃ ┃ ┃ ┗ 📜update_user_provider.dart
+ ┗ 📜injection.dart
  ```

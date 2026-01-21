@@ -9,6 +9,8 @@ Future<void> formatGeneratedCode() async {
     'format',
     'lib/features',
     'lib/core',
+    'lib/presentation',
+    'lib/injection.dart',
   ], runInShell: true);
 
   if (formatResult.exitCode != 0) {

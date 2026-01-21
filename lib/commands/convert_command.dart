@@ -5,6 +5,7 @@ import 'package:swagen/parser/datasource_generator.dart';
 import 'package:swagen/parser/entitiy_generator.dart';
 import 'package:swagen/parser/exception_generator.dart';
 import 'package:swagen/parser/failure_generator.dart';
+import 'package:swagen/parser/injector_generator.dart';
 import 'package:swagen/parser/model_generator.dart';
 import 'package:swagen/parser/provider_generator.dart';
 import 'package:swagen/parser/repository_generator.dart';
@@ -44,6 +45,7 @@ Future<void> runConvertCommand(List<String> args) async {
     'http',
     'equatable',
     'dartz',
+    'get_it',
     'flutter_secure_storage',
   ]);
 
@@ -123,7 +125,11 @@ Future<void> runConvertCommand(List<String> args) async {
       parser,
       featureName,
     );
-    generateDatasource(outputPath: datasourceDir, code: datasourceCode);
+    generateDatasource(
+      outputPath: datasourceDir,
+      code: datasourceCode,
+      featureName: featureName,
+    );
 
     schemas.addAll(datasourceGenerator.inlineSchemas);
 
@@ -138,6 +144,7 @@ Future<void> runConvertCommand(List<String> args) async {
     generateRepositories(
       groupedPaths: {featureName: pathsForFeature},
       packageName: packageName,
+      featureName: featureName,
       repoGen: repositoryGenerator,
       implGen: repositoryImplGenerator,
       components: components,
@@ -177,6 +184,36 @@ Future<void> runConvertCommand(List<String> args) async {
       projetName: packageName,
       featureName: featureName,
     );
+
+    // --- GENERATE INJECTOR ---
+    final injectorFeatures = <String, List<String>>{};
+
+    // Scan fitur dan provider files untuk injector
+    for (final entry in groupedPaths.entries) {
+      final featureName = entry.key.toLowerCase();
+      final pathsForFeature = entry.value;
+
+      // Gunakan method names sebagai "classes" untuk register di GetIt
+      final classes = <String>[];
+      pathsForFeature.forEach((path, methods) {
+        methods.forEach((method, details) {
+          final methodName = generateMethodName(
+            method,
+            path,
+            details['operationId'],
+          );
+          classes.add(
+            methodName,
+          ); // methodName nanti jadi usecase & provider class
+        });
+      });
+
+      // Tambahkan repository class (featureName Repository)
+      classes.insert(0, featureName);
+      injectorFeatures[featureName] = classes;
+    }
+
+    InjectorGenerator(packageName).generate(injectorFeatures, 'lib');
   }
 
   print('\n🚀 Swagger converted successfully into Clean Architecture!');
@@ -226,9 +263,15 @@ void generateModels({
   print('✅ Models generated at $outputPath');
 }
 
-void generateDatasource({required String outputPath, required String code}) {
+void generateDatasource({
+  required String outputPath,
+  required String code,
+  required String featureName,
+}) {
   Directory(outputPath).createSync(recursive: true);
-  File('$outputPath/remote_data_source.dart').writeAsStringSync(code);
+  File(
+    '$outputPath/${featureName}_remote_data_source.dart',
+  ).writeAsStringSync(code);
   print('✅ RemoteDataSource generated at $outputPath');
 }
 
@@ -277,6 +320,7 @@ Set<String> generateEntities({
 void generateRepositories({
   required Map<String, Map<String, dynamic>> groupedPaths,
   required String packageName,
+  required String featureName,
   required RepositoryGenerator repoGen,
   required RepositoryImplGenerator implGen,
   required Map<String, dynamic> components,
@@ -300,6 +344,7 @@ void generateRepositories({
       className,
       entry.value,
       components,
+      featureName,
     );
 
     File(

@@ -17,6 +17,7 @@ class RepositoryImplGenerator {
     String className,
     Map<String, dynamic> paths,
     Map<String, dynamic> components,
+    String featureName,
   ) {
     final buffer = StringBuffer();
 
@@ -40,7 +41,7 @@ class RepositoryImplGenerator {
     buffer.writeln("import 'package:$projectName/core/error/exception.dart';");
 
     buffer.writeln(
-      "import 'package:$projectName/features/$featureFolder/data/datasources/remote_data_source.dart';",
+      "import 'package:$projectName/features/$featureFolder/data/datasources/${featureName}_remote_data_source.dart';",
     );
 
     buffer.writeln(
@@ -60,7 +61,9 @@ class RepositoryImplGenerator {
       'class ${className}RepositoryImpl extends ${className}Repository {',
     );
 
-    buffer.writeln('  final RemoteDataSource remoteDataSource;');
+    buffer.writeln(
+      '  final ${featureName.pascalCase}RemoteDataSource remoteDataSource;',
+    );
     buffer.writeln();
     buffer.writeln(
       '  ${className}RepositoryImpl({required this.remoteDataSource});',

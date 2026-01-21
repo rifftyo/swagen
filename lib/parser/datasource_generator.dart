@@ -44,8 +44,18 @@ class DatasourceGenerator {
       });
     });
 
-    final abstractClass = _generateAbstractClass(paths, components);
-    final implClass = _generateImplClass(paths, baseUrl, components, parser);
+    final abstractClass = _generateAbstractClass(
+      paths,
+      components,
+      featureName,
+    );
+    final implClass = _generateImplClass(
+      paths,
+      baseUrl,
+      components,
+      parser,
+      featureName,
+    );
     final imports = _generateImports(needsFile, featureName);
 
     return "$imports\n\n$abstractClass\n\n$implClass";
@@ -73,7 +83,7 @@ class DatasourceGenerator {
 
     if (_usedModels.isNotEmpty) {
       for (var model in _usedModels) {
-        if (isSdkImport(model)) continue; // ✅ FIX
+        if (isSdkImport(model)) continue;
 
         if (_collectedModels.contains(model)) {
           buffer.writeln(
@@ -93,13 +103,16 @@ class DatasourceGenerator {
   String _generateAbstractClass(
     Map<String, dynamic> paths,
     Map<String, dynamic> components,
+    String featureName,
   ) {
     final schemas = components['schemas'];
     final buffer = StringBuffer();
     final List<String> methodSignatures = [];
     final List<String> returnTypes = [];
 
-    buffer.writeln("abstract class RemoteDataSource {");
+    buffer.writeln(
+      "abstract class ${featureName.capitalize}RemoteDataSource {",
+    );
 
     paths.forEach((path, methods) {
       methods.forEach((method, details) {
@@ -173,19 +186,24 @@ class DatasourceGenerator {
     String? baseUrl,
     Map<String, dynamic> components,
     SwaggerParser parser,
+    String featureName,
   ) {
     final schemas = components['schemas'] ?? {};
 
     final buffer = StringBuffer();
 
-    buffer.writeln("class RemoteDataSourceImpl implements RemoteDataSource {");
+    buffer.writeln(
+      "class ${featureName.capitalize}RemoteDataSourceImpl implements ${featureName.capitalize}RemoteDataSource {",
+    );
     buffer.writeln("  static const BASE_URL = '${baseUrl ?? ''}';");
     buffer.writeln("  static const tokenKey = 'access_token';");
     buffer.writeln();
     buffer.writeln("  final http.Client client;");
     buffer.writeln("  final FlutterSecureStorage storage;");
     buffer.writeln();
-    buffer.writeln("  RemoteDataSourceImpl(this.client, this.storage);");
+    buffer.writeln(
+      "  ${featureName.capitalize}RemoteDataSourceImpl({required this.client, required this.storage});",
+    );
 
     buffer.writeln();
     buffer.writeln('''
