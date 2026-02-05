@@ -153,19 +153,6 @@ Future<void> runConvertCommand(List<String> args) async {
       usedEntities: usedEntities,
     );
 
-    // Generate use cases
-    generateUseCases(
-      featureName: featureName,
-      pathsForFeature: pathsForFeature,
-      components: components,
-      usedEntities: usedEntities,
-      packageName: packageName,
-      usecaseDir: usecaseDir,
-      providerDir: providerDir,
-      useCaseGenerator: useCaseGenerator,
-      providerGenerator: providerGenerator,
-    );
-
     // Generate entities
     final entities = generateEntities(
       usedEntities: usedEntities,
@@ -183,6 +170,19 @@ Future<void> runConvertCommand(List<String> args) async {
       outputPath: modelsDir,
       projetName: packageName,
       featureName: featureName,
+    );
+
+    // Generate use cases
+    generateUseCases(
+      featureName: featureName,
+      pathsForFeature: pathsForFeature,
+      components: components,
+      usedEntities: usedEntities,
+      packageName: packageName,
+      usecaseDir: usecaseDir,
+      providerDir: providerDir,
+      useCaseGenerator: useCaseGenerator,
+      providerGenerator: providerGenerator,
     );
 
     // --- GENERATE INJECTOR ---
