@@ -3,7 +3,7 @@ description: " A code generator tool that converts Swagger/OpenAPI specification
   Dart data models, RemoteDataSource classes, provider, injection and structured exception handling.
   This simplifies API integration by automatically generating typed models,
   reducing manual coding effort, and ensuring consistency across the codebase."
-version: 1.0.0
+version: 1.1.0
 homepage: https://github.com/rifftyo/swagen
 
 environment:
@@ -11,12 +11,8 @@ environment:
   flutter: ">=1.17.0"
 
 dependencies:
-  dartz: ^0.10.1
-  equatable: ^2.0.8
   flutter:
     sdk: flutter
-  flutter_secure_storage: ^10.0.0
-  get_it: ^9.2.1
   http: ^1.6.0
   yaml: ^3.1.3
   
