@@ -6,160 +6,97 @@ class InjectorGenerator {
 
   InjectorGenerator(this.packageName);
 
-  void generate(Map<String, List<String>> features, String outputPath) {
+  void generateFeatureInjector({
+    required String featureName,
+    required List<String> classes,
+  }) {
     final buffer = StringBuffer();
+    final pascalFeature = featureName.pascalCase;
 
-    buffer.writeln('import \'package:get_it/get_it.dart\';');
-    buffer.writeln('import \'package:http/http.dart\' as http;');
-    buffer.writeln(
-      'import \'package:flutter_secure_storage/flutter_secure_storage.dart\';',
-    );
+    buffer.writeln("import 'package:get_it/get_it.dart';");
 
-    for (final feature in features.entries) {
-      final featureName = feature.key.toLowerCase();
+    // ===== IMPORTS =====
+    for (final className in classes) {
+      final snake = className.snakeCase;
 
-      for (final className in feature.value) {
-        final usecasePath =
-            'lib/features/$featureName/domain/usecases/${className.snakeCase}.dart';
-        if (File(usecasePath).existsSync()) {
-          buffer.writeln(
-            "import 'package:$packageName/features/$featureName/domain/usecases/${className.snakeCase}.dart';",
-          );
-        }
-
-        final providerPath =
-            'lib/features/$featureName/presentation/providers/${className.snakeCase}_provider.dart';
-        if (File(providerPath).existsSync()) {
-          buffer.writeln(
-            'import \'package:$packageName/features/$featureName/presentation/providers/${className.snakeCase}_provider.dart\';',
-          );
-        }
-
-        final repoDomainPath =
-            'lib/features/$featureName/domain/repositories/${featureName}_repository.dart';
-        if (File(repoDomainPath).existsSync()) {
-          buffer.writeln(
-            "import 'package:$packageName/features/$featureName/domain/repositories/${featureName}_repository.dart';",
-          );
-        }
-
-        final repoImplPath =
-            'lib/features/$featureName/data/repositories/${featureName}_repository.dart';
-        if (File(repoImplPath).existsSync()) {
-          buffer.writeln(
-            "import 'package:$packageName/features/$featureName/data/repositories/${featureName}_repository.dart';",
-          );
-        }
-
-        final dataSourcePath =
-            'lib/features/$featureName/data/datasources/${featureName}_remote_data_source.dart';
-        if (File(dataSourcePath).existsSync()) {
-          buffer.writeln(
-            "import 'package:$packageName/features/$featureName/data/datasources/${featureName}_remote_data_source.dart';",
-          );
-        }
+      final usecasePath =
+          'lib/features/$featureName/domain/usecases/$snake.dart';
+      if (File(usecasePath).existsSync()) {
+        buffer.writeln(
+          "import 'package:$packageName/features/$featureName/domain/usecases/$snake.dart';",
+        );
       }
-      buffer.writeln();
+
+      final providerPath =
+          'lib/features/$featureName/presentation/providers/${snake}_provider.dart';
+      if (File(providerPath).existsSync()) {
+        buffer.writeln(
+          "import 'package:$packageName/features/$featureName/presentation/providers/${snake}_provider.dart';",
+        );
+      }
     }
 
-    buffer.writeln('final sl = GetIt.instance;\n');
-    buffer.writeln('void init() {');
+    buffer.writeln(
+      "import 'package:$packageName/features/$featureName/domain/repositories/${featureName}_repository.dart';",
+    );
+    buffer.writeln(
+      "import 'package:$packageName/features/$featureName/data/repositories/${featureName}_repository.dart';",
+    );
+    buffer.writeln(
+      "import 'package:$packageName/features/$featureName/data/datasources/${featureName}_remote_data_source.dart';",
+    );
 
+    buffer.writeln('\nfinal sl = GetIt.instance;\n');
+    buffer.writeln('void init${pascalFeature}Injector() {');
+
+    // ===== DATA SOURCE =====
+    buffer.writeln('// Data Source');
+    buffer.writeln(
+      '  sl.registerLazySingleton<${pascalFeature}RemoteDataSource>('
+      '() => ${pascalFeature}RemoteDataSourceImpl(client: sl(), storage: sl()));',
+    );
     buffer.writeln();
 
     // ===== REPOSITORY =====
-    buffer.writeln('  // repositories');
-    for (final feature in features.entries) {
-      final featureName = feature.key.toLowerCase();
-      final className = featureName.pascalCase;
+    buffer.writeln('// Repository');
+    buffer.writeln(
+      '  sl.registerLazySingleton<${pascalFeature}Repository>('
+      '() => ${pascalFeature}RepositoryImpl(remoteDataSource: sl()));',
+    );
+    buffer.writeln();
 
-      final repoDomain = File(
-        'lib/features/$featureName/domain/repositories/${featureName}_repository.dart',
-      );
-      final repoImpl = File(
-        'lib/features/$featureName/data/repositories/${featureName}_repository.dart',
+    buffer.writeln('// UseCase & Provider');
+    // ===== USE CASE & PROVIDER =====
+    for (final className in classes) {
+      final pascal = className.pascalCase;
+      final camel = className.camelCase;
+
+      final usecaseFile = File(
+        'lib/features/$featureName/domain/usecases/${className.snakeCase}.dart',
       );
 
-      if (repoDomain.existsSync() && repoImpl.existsSync()) {
+      if (usecaseFile.existsSync()) {
         buffer.writeln(
-          '  sl.registerLazySingleton<${className}Repository>('
-          '() => ${className}RepositoryImpl(remoteDataSource: sl()));',
+          '  sl.registerLazySingleton<$pascal>(() => $pascal(sl()));',
         );
       }
-    }
 
-    buffer.writeln();
-
-    // ===== USECASE =====
-    buffer.writeln('  // usecases');
-    for (final feature in features.entries) {
-      final featureName = feature.key.toLowerCase();
-
-      for (final className in feature.value) {
-        final usecaseClass = className.pascalCase;
-
-        final usecaseFile = File(
-          'lib/features/$featureName/domain/usecases/${className.snakeCase}.dart',
-        );
-
-        if (usecaseFile.existsSync()) {
-          buffer.writeln(
-            '  sl.registerLazySingleton<$usecaseClass>(() => $usecaseClass(sl()));',
-          );
-        }
-      }
-    }
-
-    buffer.writeln();
-
-    // ===== PROVIDER =====
-    buffer.writeln('  // provider');
-    for (final feature in features.entries) {
-      final featureName = feature.key.toLowerCase();
-
-      for (final className in feature.value) {
-        final providerClass = '${className.pascalCase}Provider';
-        final useCaseParamName = '${className.camelCase}UseCase';
-
-        final providerFile = File(
-          'lib/features/$featureName/presentation/providers/${className.snakeCase}_provider.dart',
-        );
-
-        if (providerFile.existsSync()) {
-          buffer.writeln(
-            '  sl.registerFactory<$providerClass>(() => '
-            '$providerClass($useCaseParamName: sl()));',
-          );
-        }
-      }
-    }
-
-    buffer.writeln();
-
-    // ===== REMOTE DATA SOURCE =====
-    buffer.writeln('  // data sources');
-    for (final feature in features.entries) {
-      final featureName = feature.key.toLowerCase();
-
-      final dataSourceFile = File(
-        'lib/features/$featureName/data/datasources/${featureName}_remote_data_source.dart',
+      final providerFile = File(
+        'lib/features/$featureName/presentation/providers/${className.snakeCase}_provider.dart',
       );
 
-      if (dataSourceFile.existsSync()) {
+      if (providerFile.existsSync()) {
         buffer.writeln(
-          ' sl.registerLazySingleton<${featureName.pascalCase}RemoteDataSource>(() => ${featureName.pascalCase}RemoteDataSourceImpl(client: sl(), storage: sl()));',
+          '  sl.registerFactory<${pascal}Provider>(() => '
+          '${pascal}Provider(${camel}UseCase: sl()));',
         );
       }
     }
-
-    buffer.writeln();
-
-    // external
-    buffer.writeln('sl.registerLazySingleton(() => http.Client());');
-    buffer.writeln('sl.registerLazySingleton(() => FlutterSecureStorage());');
 
     buffer.writeln('}');
-    Directory(outputPath).createSync(recursive: true);
-    File('$outputPath/injection.dart').writeAsStringSync(buffer.toString());
+
+    final path = 'lib/features/$featureName/injector.dart';
+    Directory('lib/features/$featureName').createSync(recursive: true);
+    File(path).writeAsStringSync(buffer.toString());
   }
 }

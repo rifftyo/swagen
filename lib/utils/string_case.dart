@@ -1,9 +1,4 @@
 extension StringCaseExtension on String {
-  String get lowerCamelCase {
-    if (isEmpty) return this;
-    return pascalCase[0].toLowerCase() + pascalCase.substring(1);
-  }
-
   String get snakeCase {
     return replaceAllMapped(
       RegExp(r'([a-z0-9])([A-Z])'),
@@ -13,18 +8,18 @@ extension StringCaseExtension on String {
 
   String get pascalCase {
     final words = snakeCase.split('_');
-    return words
-        .where((w) => w.isNotEmpty)
-        .map((w) => w[0].toUpperCase() + w.substring(1))
-        .join();
+    return words.where((w) => w.isNotEmpty).map((w) => w.capitalize).join();
   }
 
   String get camelCase {
-    return replaceAllMapped(RegExp(r'_(\w)'), (m) => m.group(1)!.toUpperCase());
+    if (isEmpty) return this;
+    final p = pascalCase;
+    return p[0].toLowerCase() + p.substring(1);
   }
 
   String get capitalize {
-    return isEmpty ? this : '${this[0].toUpperCase()}${substring(1)}';
+    if (isEmpty) return this;
+    return '${this[0].toUpperCase()}${substring(1)}';
   }
 
   String get pluralToSingular {

@@ -2,18 +2,24 @@
 
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:http/http.dart' as http;
+import 'package:yaml/yaml.dart';
 
 import 'package:swagen/utils/string_case.dart';
-import 'package:yaml/yaml.dart';
 
 class SwaggerParser {
   final Map<String, dynamic> swagger;
 
   SwaggerParser(this.swagger);
 
+  // =======================
+  // Factory Constructors
+  // =======================
+
   factory SwaggerParser.fromFile(String path) {
     final content = File(path).readAsStringSync();
+
     if (path.endsWith('.yaml') || path.endsWith('.yml')) {
       final yamlMap = loadYaml(content);
       return SwaggerParser(_convertYamlToMap(yamlMap));
@@ -34,6 +40,10 @@ class SwaggerParser {
     return SwaggerParser(_parseContent(response.body, url));
   }
 
+  // =======================
+  // Parsing Helpers
+  // =======================
+
   static Map<String, dynamic> _parseContent(String content, String source) {
     if (source.endsWith('.yaml') || source.endsWith('.yml')) {
       return _convertYamlToMap(loadYaml(content));
@@ -45,6 +55,30 @@ class SwaggerParser {
 
     return _convertYamlToMap(loadYaml(content));
   }
+
+  static Map<String, dynamic> _convertYamlToMap(YamlMap yamlMap) {
+    return _yamlToDart(yamlMap) as Map<String, dynamic>;
+  }
+
+  static dynamic _yamlToDart(dynamic yaml) {
+    if (yaml is YamlMap) {
+      return Map<String, dynamic>.fromEntries(
+        yaml.entries.map(
+          (entry) => MapEntry(entry.key.toString(), _yamlToDart(entry.value)),
+        ),
+      );
+    }
+
+    if (yaml is YamlList) {
+      return yaml.map(_yamlToDart).toList();
+    }
+
+    return yaml;
+  }
+
+  // =======================
+  // Swagger Accessors
+  // =======================
 
   Map<String, dynamic> getComponents() {
     return swagger['components'] ?? {};
@@ -60,14 +94,17 @@ class SwaggerParser {
 
   String? getBaseUrl() {
     final servers = swagger['servers'] as List?;
+
     if (servers != null && servers.isNotEmpty) {
       return servers.first['url'];
     }
+
     return null;
   }
 
   bool useSecurity({required Map pathItem, required String method}) {
     final operationSecurity = pathItem[method]?['security'];
+
     if (operationSecurity is List) {
       return operationSecurity.isNotEmpty;
     }
@@ -75,6 +112,10 @@ class SwaggerParser {
     final globalSecurity = swagger['security'];
     return globalSecurity is List && globalSecurity.isNotEmpty;
   }
+
+  // =======================
+  // Inline Schema Extractor
+  // =======================
 
   Map<String, dynamic> extractInlineResponseSchemas() {
     final paths = getPaths();
@@ -95,58 +136,55 @@ class SwaggerParser {
 
       methods.forEach((method, details) {
         final responses = details['responses'] ?? {};
+
         responses.forEach((code, responseDetail) {
           final schema =
               responseDetail['content']?['application/json']?['schema'];
-          final description = responseDetail['description'] ?? '';
 
-          if (schema == null) {
-            inlineSchemas[defaultModelName] = {
-              "type": "object",
-              "properties": {
-                "message": {
-                  "type": "string",
-                  "description":
-                      description.isNotEmpty
-                          ? description
-                          : "Operation completed successfully",
+          if (schema == null) return;
+
+          // Object inline response
+          if (schema['type'] == 'object' && schema['\$ref'] == null) {
+            inlineSchemas[defaultModelName] = schema;
+            return;
+          }
+
+          // Array with $ref items
+          if (schema['type'] == 'array' && schema['items']?['\$ref'] != null) {
+            final ref = schema['items']['\$ref'].split('/').last;
+
+            final listModelName =
+                '${ref.toString().pluralToSingular}ListResponse';
+
+            inlineSchemas[listModelName] = {
+              'type': 'object',
+              'properties': {
+                'items': {
+                  'type': 'array',
+                  'items': {'\$ref': '#/components/schemas/$ref'},
                 },
               },
             };
             return;
           }
 
-          if (schema['type'] == 'object' && schema['\$ref'] == null) {
-            inlineSchemas[defaultModelName] = schema;
-          } else if (schema['type'] == 'array' &&
-              schema['items']?['\$ref'] != null) {
-            final ref = schema['items']['\$ref'].split('/').last;
-            final listModelName =
-                '${ref.toString().pluralToSingular}ListResponse';
-
-            inlineSchemas[listModelName] = {
-              "type": "object",
-              "properties": {
-                "items": {
-                  "type": "array",
-                  "items": {"\$ref": "#/components/schemas/$ref"},
-                },
-              },
-            };
-          } else if (schema['type'] == 'array' &&
+          // Array with inline object items
+          if (schema['type'] == 'array' &&
               schema['items'] != null &&
               schema['items']['\$ref'] == null &&
               schema['items']['type'] == 'object') {
-            final listModelName = '${defaultModelName}ItemListResponse';
             final itemModelName = '${defaultModelName}Item';
 
+            final listModelName = '${defaultModelName}ItemListResponse';
+
             inlineSchemas[itemModelName] = schema['items'];
+
             inlineSchemas[listModelName] = {
-              "type": "object",
-              "properties": {
-                "items": {
-                  "type": "array",
-                  "items": {"\$ref": "#/components/schemas/$itemModelName"},
+              'type': 'object',
+              'properties': {
+                'items': {
+                  'type': 'array',
+                  'items': {'\$ref': '#/components/schemas/$itemModelName'},
                 },
               },
             };
@@ -156,23 +194,5 @@ class SwaggerParser {
     });
 
     return inlineSchemas;
-  }
-
-  static Map<String, dynamic> _convertYamlToMap(YamlMap yamlMap) {
-    return _yamlToDart(yamlMap) as Map<String, dynamic>;
-  }
-
-  static dynamic _yamlToDart(dynamic yaml) {
-    if (yaml is YamlMap) {
-      return Map<String, dynamic>.fromEntries(
-        yaml.entries.map(
-          (e) => MapEntry(e.key.toString(), _yamlToDart(e.value)),
-        ),
-      );
-    }
-    if (yaml is YamlList) {
-      return yaml.map(_yamlToDart).toList();
-    }
-    return yaml;
   }
 }

@@ -70,7 +70,7 @@ List<String> extractRequestParams(
 
     imports.add(refName);
     usedModels.add(refName);
-    bodyParams.add('$refName ${refName.toString().lowerCamelCase}');
+    bodyParams.add('$refName ${refName.toString().camelCase}');
     return bodyParams;
   }
 

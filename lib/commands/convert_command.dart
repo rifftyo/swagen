@@ -6,6 +6,7 @@ import 'package:swagen/parser/entitiy_generator.dart';
 import 'package:swagen/parser/exception_generator.dart';
 import 'package:swagen/parser/failure_generator.dart';
 import 'package:swagen/parser/injector_generator.dart';
+import 'package:swagen/parser/injectore_core_generator.dart';
 import 'package:swagen/parser/model_generator.dart';
 import 'package:swagen/parser/provider_generator.dart';
 import 'package:swagen/parser/repository_generator.dart';
@@ -184,37 +185,15 @@ Future<void> runConvertCommand(List<String> args) async {
       useCaseGenerator: useCaseGenerator,
       providerGenerator: providerGenerator,
     );
-
-    // --- GENERATE INJECTOR ---
-    final injectorFeatures = <String, List<String>>{};
-
-    // Scan fitur dan provider files untuk injector
-    for (final entry in groupedPaths.entries) {
-      final featureName = entry.key.toLowerCase();
-      final pathsForFeature = entry.value;
-
-      // Gunakan method names sebagai "classes" untuk register di GetIt
-      final classes = <String>[];
-      pathsForFeature.forEach((path, methods) {
-        methods.forEach((method, details) {
-          final methodName = generateMethodName(
-            method,
-            path,
-            details['operationId'],
-          );
-          classes.add(
-            methodName,
-          ); // methodName nanti jadi usecase & provider class
-        });
-      });
-
-      // Tambahkan repository class (featureName Repository)
-      classes.insert(0, featureName);
-      injectorFeatures[featureName] = classes;
-    }
-
-    InjectorGenerator(packageName).generate(injectorFeatures, 'lib');
   }
+
+  // Generate injectors
+  final injectorFeatures = collectInjectorFeatures(groupedPaths);
+
+  generateInjectors(
+    packageName: packageName,
+    injectorFeatures: injectorFeatures,
+  );
 
   print('\n🚀 Swagger converted successfully into Clean Architecture!');
 
@@ -439,4 +418,47 @@ void generateUseCases({
       ).writeAsStringSync(usecaseCode);
     });
   });
+}
+
+Map<String, List<String>> collectInjectorFeatures(
+  Map<String, Map<String, dynamic>> groupedPaths,
+) {
+  final injectorFeatures = <String, List<String>>{};
+
+  for (final entry in groupedPaths.entries) {
+    final featureName = entry.key.toLowerCase();
+    final pathsForFeature = entry.value;
+    final classes = <String>[];
+
+    pathsForFeature.forEach((path, methods) {
+      methods.forEach((method, details) {
+        final methodName = generateMethodName(
+          method,
+          path,
+          details['operationId'],
+        );
+        classes.add(methodName);
+      });
+    });
+
+    injectorFeatures[featureName] = classes;
+  }
+
+  return injectorFeatures;
+}
+
+void generateInjectors({
+  required String packageName,
+  required Map<String, List<String>> injectorFeatures,
+}) {
+  final injectorGenerator = InjectorGenerator(packageName);
+
+  for (final entry in injectorFeatures.entries) {
+    injectorGenerator.generateFeatureInjector(
+      featureName: entry.key,
+      classes: entry.value,
+    );
+  }
+
+  MainInjectorGenerator(packageName).generate(injectorFeatures.keys.toSet());
 }

@@ -43,7 +43,7 @@ class ProviderGenerator {
     required String returnType,
   }) {
     final providerName = '${usecaseName}Provider';
-    final useCaseVar = '${usecaseName.lowerCamelCase}UseCase';
+    final useCaseVar = '${usecaseName.camelCase}UseCase';
 
     final constructorParams = params
         .map((e) => '${e.type} ${e.name}')
