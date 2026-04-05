@@ -3,7 +3,7 @@ description: " A code generator tool that converts Swagger/OpenAPI specification
   Dart data models, RemoteDataSource classes, provider, injection and structured exception handling.
   This simplifies API integration by automatically generating typed models,
   reducing manual coding effort, and ensuring consistency across the codebase."
-version: 1.1.0
+version: 1.1.1
 homepage: https://github.com/rifftyo/swagen
 
 environment:
