@@ -123,7 +123,110 @@ dart run swagen help
 ```
 - Displays all available commands with explanations.
 
-### 6. Version command
+### 6. Swagger/Open API Support
+Example Swagger:
+```
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CineTrack API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://cinetrack-be.vercel.app"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "required": ["id", "email", "is_verified"],
+        "properties": {
+          "id": { "type": "string" },
+          "email": { "type": "string" },
+          "is_verified": { "type": "boolean" }
+        }
+      },
+      "AuthResponse": {
+        "type": "object",
+        "required": ["message", "token", "user"],
+        "properties": {
+          "message": { "type": "string" },
+          "token": { "type": "string" },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/login": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "loginUser",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+Swagger Best Practice for Swagen:
+- Use OperationId for Function Naming
+  ```
+  "operationId": "getMovieDetail"
+  ```
+  Generated Dart Function:
+  ```
+  Future<MovieDetail> getMovieDetail(int id)
+  ```
+- Use Tags for Separation
+  ```
+  "tags": ["Movies"]
+  ```
+  Generated Structure:
+  ```
+  features/movies/
+  ```
+- Use Components Schemas for All Model
+  ```
+  "$ref": "#/components/schemas/Movie"
+  ```
+  Benefits:
+  - Reusable models
+  - Automatic Entity + Model generation
+  - Consistent structure across endpoints
+
+### 7. Version command
 ```bash
 dart run swagen version
 ```
